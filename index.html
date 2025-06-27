@@ -1203,19 +1203,201 @@
                 position: 'bottomright'
             }).addTo(map);
             
-            // 初始化建築物圖層
-            buildingLayer = L.layerGroup().addTo(map);
+            // 初始化圖層控制
+            const baseLayers = {
+                '標準地圖': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '© OpenStreetMap contributors'
+                }),
+                '深色地圖': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 19,
+                    attribution: '© OpenStreetMap contributors © CartoDB'
+                })
+            };
             
-            // 初始化捷運圖層
-            metroLayer = L.layerGroup().addTo(map);
+            // 初始化圖層群組
+            const overlays = {
+                '建築物': L.layerGroup(),
+                '捷運路線': L.layerGroup(),
+                '捷運站點': L.layerGroup()
+            };
             
-            // 延遲載入建築物資料
-            setTimeout(() => {
-                loadBuildingsWithHeight();
-            }, 500);
+            // 將圖層控制加入地圖
+            L.control.layers(baseLayers, overlays, {
+                collapsed: false,
+                position: 'topright'
+            }).addTo(map);n            
+            // 初始化圖層變數
+            buildingLayer = overlays['建築物'];
+            metroLayer = overlays['捷運路線'];
+            const metroStationsLayer = overlays['捷運站點'];
+            
+            // 預設顯示所有圖層
+            Object.values(overlays).forEach(layer => layer.addTo(map));
+            
+            // 監聽地圖移動和縮放事件
+            map.on('moveend', updateVisibleLayers);
+            map.on('zoomend', updateVisibleLayers);
+            
+            // 初始載入可見圖層
+            updateVisibleLayers();
+            
+            // 更新可見圖層的函數
+            function updateVisibleLayers() {
+                const zoom = map.getZoom();
+                const center = map.getCenter();
+                
+                // 更新捷運路線
+                if (zoom >= 10) {
+                    loadMetroRoutes(center, zoom);
+                } else {
+                    metroLayer.clearLayers();
+                }
+                
+                // 更新建築物
+                if (zoom >= 15) {
+                    loadBuildingsWithHeight();
+                } else {
+                    buildingLayer.clearLayers();
+                    currentBuildings = [];
+                    updateStatistics([]);
+                }
+            }
         }
 
         // 載入捷運路線
+        async function loadMetroRoutes(center, zoom) {
+            // 如果正在載入中，則不重複執行
+            if (window.isLoadingMetro) return;
+            window.isLoadingMetro = true;
+            
+            // 清空現有路線
+            metroLayer.clearLayers();
+            
+            // 根據縮放級別決定載入的路線範圍
+            const radius = zoom >= 15 ? 5000 : (zoom >= 12 ? 10000 : 20000);
+            
+            // 構建 Overpass API 查詢
+            const query = `
+                [out:json][timeout:25];
+                (
+                    way["railway"~"subway|light_rail|tram"](around:${radius},${center.lat},${center.lng});
+                    relation["route"~"subway|light_rail|tram"](around:${radius},${center.lat},${center.lng});
+                );
+                out body;
+                >;
+                out skel qt;
+            `;
+            
+            try {
+                const response = await fetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    body: query
+                });
+                
+                if (!response.ok) throw new Error('無法載入捷運路線資料');
+                
+                const data = await response.json();
+                const elements = data.elements || [];
+                
+                // 處理路線資料
+                elements.forEach(element => {
+                    if (element.type === 'way' && element.nodes && element.nodes.length > 1) {
+                        const lineColor = getLineColor(element.tags);
+                        const polyline = L.polyline(
+                            element.geometry.map(coord => [coord.lat, coord.lon]),
+                            {
+                                color: lineColor,
+                                weight: zoom >= 15 ? 4 : 3,
+                                opacity: 0.8,
+                                lineJoin: 'round'
+                            }
+                        ).addTo(metroLayer);
+                    }
+                });
+                
+                // 載入捷運站點
+                loadMetroStations(center, zoom);
+                
+            } catch (error) {
+                console.error('載入捷運路線時發生錯誤:', error);
+                setStatus('❌ 載入捷運路線失敗', 'error');
+            } finally {
+                window.isLoadingMetro = false;
+            }
+        }
+        
+        // 根據標籤獲取路線顏色
+        function getLineColor(tags = {}) {
+            if (tags.colour) return '#' + tags.colour;
+            if (tags.ref) {
+                const ref = tags.ref.toLowerCase();
+                if (ref.includes('red') || ref.includes('r')) return '#e3002c';
+                if (ref.includes('blue') || ref.includes('b')) return '#0070bd';
+                if (ref.includes('green') || ref.includes('g')) return '#008659';
+                if (ref.includes('yellow') || ref.includes('y')) return '#ffd700';
+                if (ref.includes('brown') || ref.includes('br')) return '#8b4513';
+            }
+            return '#666666'; // 預設顏色
+        }
+        
+        // 載入捷運站點
+        async function loadMetroStations(center, zoom) {
+            const radius = zoom >= 15 ? 5000 : (zoom >= 12 ? 10000 : 20000);
+            const query = `
+                [out:json][timeout:25];
+                (
+                    node["railway"="station"]["station"="subway|light_rail|tram"](around:${radius},${center.lat},${center.lng});
+                    node["railway"~"subway_entrance|station"]["station"~"subway|light_rail|tram"](around:${radius},${center.lat},${center.lng});
+                );
+                out body;
+                >;
+                out skel qt;
+            `;
+            
+            try {
+                const response = await fetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    body: query
+                });
+                
+                if (!response.ok) throw new Error('無法載入捷運站點資料');
+                
+                const data = await response.json();
+                const elements = data.elements || [];
+                
+                // 過濾重複的站點（基於座標）
+                const uniqueStations = [];
+                const addedCoords = new Set();
+                
+                elements.forEach(station => {
+                    if (!station.lat || !station.lon) return;
+                    
+                    const coordKey = `${station.lat.toFixed(5)},${station.lon.toFixed(5)}`;
+                    if (!addedCoords.has(coordKey)) {
+                        addedCoords.add(coordKey);
+                        uniqueStations.push(station);
+                    }
+                });
+                
+                // 繪製站點
+                uniqueStations.forEach(station => {
+                    L.circleMarker([station.lat, station.lon], {
+                        radius: 5,
+                        fillColor: '#fff',
+                        color: '#333',
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    }).addTo(overlays['捷運站點']);
+                });
+                
+            } catch (error) {
+                console.error('載入捷運站點時發生錯誤:', error);
+            }
+        }
+        
+        // 載入捷運路線（舊版，保留相容性）
         function loadMetroLines(system, showFuture) {
             const lineGroups = {};
             
