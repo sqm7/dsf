@@ -1156,133 +1156,51 @@
             return lineNames[lineKey] || '未知路線';
         }
 
-        // 自定義地圖樣式
+        // 簡化的地圖樣式
         const mapStyle = [
             {
                 "featureType": "all",
-                "elementType": "labels.text.fill",
-                "stylers": [
-                    {"saturation": 36},
-                    {"color": "#000000"},
-                    {"lightness": 40}
-                ]
-            },
-            {
-                "featureType": "all",
-                "elementType": "labels.text.stroke",
-                "stylers": [
-                    {"visibility": "on"},
-                    {"color": "#000000"},
-                    {"lightness": 16}
-                ]
-            },
-            {
-                "featureType": "all",
-                "elementType": "labels.icon",
-                "stylers": [
-                    {"visibility": "off"}
-                ]
-            },
-            {
-                "featureType": "administrative",
-                "elementType": "geometry.fill",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 20}
-                ]
-            },
-            {
-                "featureType": "administrative",
-                "elementType": "geometry.stroke",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 17},
-                    {"weight": 1.2}
-                ]
-            },
-            {
-                "featureType": "landscape",
-                "elementType": "geometry",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 20}
-                ]
-            },
-            {
-                "featureType": "poi",
-                "elementType": "geometry",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 21}
-                ]
-            },
-            {
-                "featureType": "road.highway",
-                "elementType": "geometry.fill",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 17}
-                ]
-            },
-            {
-                "featureType": "road.highway",
-                "elementType": "geometry.stroke",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 29},
-                    {"weight": 0.2}
-                ]
-            },
-            {
-                "featureType": "road.arterial",
-                "elementType": "geometry",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 18}
-                ]
-            },
-            {
-                "featureType": "road.local",
-                "elementType": "geometry",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 16}
-                ]
-            },
-            {
-                "featureType": "transit",
-                "elementType": "geometry",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 19}
-                ]
+                "elementType": "labels",
+                "stylers": [{"visibility": "off"}]
             },
             {
                 "featureType": "water",
-                "elementType": "geometry",
-                "stylers": [
-                    {"color": "#000000"},
-                    {"lightness": 17}
-                ]
+                "elementType": "geometry.fill",
+                "stylers": [{"color": "#1e1e2e"}]
+            },
+            {
+                "featureType": "road",
+                "elementType": "geometry.fill",
+                "stylers": [{"color": "#2a2a3a"}]
+            },
+            {
+                "featureType": "landscape",
+                "elementType": "geometry.fill",
+                "stylers": [{"color": "#121212"}]
             }
         ];
 
         // 初始化地圖
         function initMap() {
             // 創建地圖實例，設置視圖到台北市中心
-            map = L.map('map').setView([25.0330, 121.5654], 13);
+            map = L.map('map', {
+                zoomControl: false,
+                preferCanvas: true,  // 使用 Canvas 渲染提升效能
+                zoomSnap: 0.5,       // 平滑縮放
+                zoomDelta: 0.5,      // 平滑縮放
+                wheelPxPerZoomLevel: 60  // 更流暢的滑鼠滾輪縮放
+            }).setView([25.0330, 121.5654], 13);
             
-            // 添加 Google 地圖圖層（深色主題）
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            // 使用輕量級的 OpenStreetMap 圖層
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
-                attribution: '© OpenStreetMap contributors © CartoDB'
+                attribution: '© OpenStreetMap contributors',
+                detectRetina: false  // 在 Retina 螢幕上不使用高解析度圖塊
             }).addTo(map);
             
-            // 添加自定義地圖樣式
-            const style = L.geoJson(null, {
-                style: function(feature) {
-                    return { fillColor: '#000000', weight: 0.5, opacity: 1, color: '#666', fillOpacity: 0.7 };
-                }
+            // 添加縮放控制
+            L.control.zoom({
+                position: 'bottomright'
             }).addTo(map);
             
             // 初始化建築物圖層
@@ -1291,28 +1209,10 @@
             // 初始化捷運圖層
             metroLayer = L.layerGroup().addTo(map);
             
-            // 載入建築物資料
-            loadBuildingsWithHeight();
-            
-            // 添加地圖樣式控制
-            map.on('zoomend', function() {
-                updateMapStyle();
-            });
-        }
-        
-        // *** NEW: 重新繪製所有可見的捷運路線 ***
-        function redrawAllVisibleMetro() {
-            metroLayer.clearLayers();
-            const showFuture = document.getElementById('show-future-metro').checked;
-            
-            Object.keys(metroSystems).forEach(systemKey => {
-                const checkbox = document.getElementById(`show-${systemKey}-metro`);
-                if (checkbox && checkbox.checked) {
-                    const system = metroSystems[systemKey];
-                    loadMetroLines(system, showFuture);
-                    loadMetroStations(system, showFuture);
-                }
-            });
+            // 延遲載入建築物資料
+            setTimeout(() => {
+                loadBuildingsWithHeight();
+            }, 500);
         }
 
         // 載入捷運路線
