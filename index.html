@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>建築物形狀地圖工具</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            backdrop-filter: blur(10px);
+        }
+
+        .sidebar {
+            width: 320px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            padding: 24px;
+            overflow-y: auto;
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+            border-radius: 0 20px 20px 0;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 8px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: #718096;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-label {
+            display: block;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .search-container {
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            background: white;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px 16px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .info-panel {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .info-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .info-label {
+            color: #718096;
+        }
+
+        .info-value {
+            color: #2d3748;
+            font-weight: 500;
+        }
+
+        .legend {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+
+        .legend-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #2d3748;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            margin-right: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            display: none;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status {
+            text-align: center;
+            padding: 8px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: rgba(72, 187, 120, 0.1);
+            color: #38a169;
+            border: 1px solid rgba(72, 187, 120, 0.2);
+        }
+
+        .status.error {
+            background: rgba(245, 101, 101, 0.1);
+            color: #e53e3e;
+            border: 1px solid rgba(245, 101, 101, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="title">建築形狀地圖</div>
+            <div class="subtitle">探索周邊建築物的形狀與結構</div>
+            
+            <div class="control-group">
+                <label class="control-label">搜尋地點</label>
+                <div class="search-container">
+                    <input type="text" class="search-input" id="searchInput" placeholder="輸入地址或地點名稱...">
+                </div>
+                <button class="btn" onclick="searchLocation()">🔍 搜尋位置</button>
+                <button class="btn" onclick="getCurrentLocation()">📍 使用目前位置</button>
+                <button class="btn" onclick="loadBuildings()">🏢 載入建築物</button>
+            </div>
+
+            <div id="status"></div>
+
+            <div class="legend">
+                <div class="legend-title">圖例說明</div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #3B82F6;"></div>
+                    <span>住宅建築</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #EF4444;"></div>
+                    <span>商業建築</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #10B981;"></div>
+                    <span>工業建築</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #F59E0B;"></div>
+                    <span>公共建築</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #8B5CF6;"></div>
+                    <span>其他建築</span>
+                </div>
+            </div>
+
+            <div class="info-panel" id="buildingInfo" style="display: none;">
+                <div class="info-title">建築物資訊</div>
+                <div id="buildingDetails"></div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <div>載入建築物資料中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script>
+        let map;
+        let buildingLayer;
+        let currentBuildings = [];
+
+        // 初始化地圖
+        function initMap() {
+            map = L.map('map').setView([25.0330, 121.5654], 16); // 台北市中心
+
+            // 添加地圖圖層
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            // 建築物圖層
+            buildingLayer = L.layerGroup().addTo(map);
+
+            // 地圖點擊事件
+            map.on('click', function(e) {
+                hideBuildinInfo();
+            });
+        }
+
+        // 根據建築類型獲取顏色
+        function getBuildingColor(building) {
+            const tags = building.tags || {};
+            
+            if (tags.building === 'residential' || tags.building === 'house' || tags.building === 'apartments') {
+                return '#3B82F6'; // 藍色 - 住宅
+            } else if (tags.building === 'commercial' || tags.building === 'retail' || tags.shop) {
+                return '#EF4444'; // 紅色 - 商業
+            } else if (tags.building === 'industrial' || tags.building === 'warehouse') {
+                return '#10B981'; // 綠色 - 工業
+            } else if (tags.amenity || tags.building === 'public' || tags.building === 'school' || tags.building === 'hospital') {
+                return '#F59E0B'; // 橙色 - 公共設施
+            } else {
+                return '#8B5CF6'; // 紫色 - 其他
+            }
+        }
+
+        // 獲取建築物類型描述
+        function getBuildingTypeDescription(building) {
+            const tags = building.tags || {};
+            
+            if (tags.building === 'residential' || tags.building === 'house') return '住宅';
+            if (tags.building === 'apartments') return '公寓';
+            if (tags.building === 'commercial') return '商業建築';
+            if (tags.building === 'retail') return '零售建築';
+            if (tags.building === 'industrial') return '工業建築';
+            if (tags.building === 'warehouse') return '倉庫';
+            if (tags.building === 'school') return '學校';
+            if (tags.building === 'hospital') return '醫院';
+            if (tags.amenity) return tags.amenity;
+            if (tags.shop) return `商店 (${tags.shop})`;
+            
+            return tags.building || '建築物';
+        }
+
+        // 載入建築物數據
+        async function loadBuildings() {
+            const center = map.getCenter();
+            const bounds = map.getBounds();
+            
+            const query = `
+                [out:json][timeout:25];
+                (
+                  way["building"](${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()});
+                  relation["building"](${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()});
+                );
+                out geom;
+            `;
+
+            showLoading();
+            setStatus('正在載入建築物資料...', 'info');
+
+            try {
+                const response = await fetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    body: query
+                });
+
+                if (!response.ok) {
+                    throw new Error('無法載入建築物資料');
+                }
+
+                const data = await response.json();
+                displayBuildings(data.elements);
+                setStatus(`成功載入 ${data.elements.length} 個建築物`, 'success');
+                
+            } catch (error) {
+                console.error('載入建築物時發生錯誤:', error);
+                setStatus('載入建築物資料失敗，請稍後再試', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 顯示建築物
+        function displayBuildings(buildings) {
+            buildingLayer.clearLayers();
+            currentBuildings = buildings;
+
+            buildings.forEach(building => {
+                if (building.geometry && building.geometry.length > 0) {
+                    const coords = building.geometry.map(point => [point.lat, point.lon]);
+                    
+                    if (coords.length > 2) {
+                        const polygon = L.polygon(coords, {
+                            color: getBuildingColor(building),
+                            fillColor: getBuildingColor(building),
+                            fillOpacity: 0.6,
+                            weight: 2,
+                            opacity: 0.8
+                        });
+
+                        polygon.on('click', function(e) {
+                            e.originalEvent.stopPropagation();
+                            showBuildingInfo(building, polygon);
+                        });
+
+                        polygon.on('mouseover', function(e) {
+                            this.setStyle({
+                                fillOpacity: 0.8,
+                                weight: 3
+                            });
+                        });
+
+                        polygon.on('mouseout', function(e) {
+                            this.setStyle({
+                                fillOpacity: 0.6,
+                                weight: 2
+                            });
+                        });
+
+                        buildingLayer.addLayer(polygon);
+                    }
+                }
+            });
+        }
+
+        // 顯示建築物資訊
+        function showBuildingInfo(building, polygon) {
+            const tags = building.tags || {};
+            const infoPanel = document.getElementById('buildingInfo');
+            const detailsDiv = document.getElementById('buildingDetails');
+            
+            let details = `
+                <div class="info-item">
+                    <span class="info-label">類型:</span>
+                    <span class="info-value">${getBuildingTypeDescription(building)}</span>
+                </div>
+            `;
+
+            if (tags.addr) {
+                if (tags.addr.street) {
+                    details += `
+                        <div class="info-item">
+                            <span class="info-label">街道:</span>
+                            <span class="info-value">${tags.addr.street}</span>
+                        </div>
+                    `;
+                }
+                if (tags.addr.housenumber) {
+                    details += `
+                        <div class="info-item">
+                            <span class="info-label">門牌:</span>
+                            <span class="info-value">${tags.addr.housenumber}</span>
+                        </div>
+                    `;
+                }
+            }
+
+            if (tags['building:levels']) {
+                details += `
+                    <div class="info-item">
+                        <span class="info-label">樓層數:</span>
+                        <span class="info-value">${tags['building:levels']} 層</span>
+                    </div>
+                `;
+            }
+
+            if (tags.height) {
+                details += `
+                    <div class="info-item">
+                        <span class="info-label">高度:</span>
+                        <span class="info-value">${tags.height}</span>
+                    </div>
+                `;
+            }
+
+            if (tags.name) {
+                details += `
+                    <div class="info-item">
+                        <span class="info-label">名稱:</span>
+                        <span class="info-value">${tags.name}</span>
+                    </div>
+                `;
+            }
+
+            // 計算建築物面積（簡單估算）
+            if (building.geometry && building.geometry.length > 2) {
+                const area = calculatePolygonArea(building.geometry);
+                details += `
+                    <div class="info-item">
+                        <span class="info-label">估算面積:</span>
+                        <span class="info-value">${area.toFixed(0)} m²</span>
+                    </div>
+                `;
+            }
+
+            detailsDiv.innerHTML = details;
+            infoPanel.style.display = 'block';
+
+            // 高亮選中的建築物
+            polygon.setStyle({
+                color: '#FFD700',
+                weight: 4,
+                fillOpacity: 0.8
+            });
+        }
+
+        // 隱藏建築物資訊
+        function hideBuildinInfo() {
+            document.getElementById('buildingInfo').style.display = 'none';
+            
+            // 重置所有建築物樣式
+            buildingLayer.eachLayer(layer => {
+                if (layer instanceof L.Polygon) {
+                    const building = currentBuildings.find(b => 
+                        layer.getLatLngs()[0].some(ll => 
+                            b.geometry.some(g => 
+                                Math.abs(g.lat - ll.lat) < 0.0001 && Math.abs(g.lon - ll.lng) < 0.0001
+                            )
+                        )
+                    );
+                    if (building) {
+                        layer.setStyle({
+                            color: getBuildingColor(building),
+                            weight: 2,
+                            fillOpacity: 0.6
+                        });
+                    }
+                }
+            });
+        }
+
+        // 計算多邊形面積（使用鞋帶公式的簡化版本）
+        function calculatePolygonArea(coordinates) {
+            if (coordinates.length < 3) return 0;
+            
+            let area = 0;
+            const earthRadius = 6371000; // 地球半徑（米）
+            
+            for (let i = 0; i < coordinates.length; i++) {
+                const j = (i + 1) % coordinates.length;
+                const lat1 = coordinates[i].lat * Math.PI / 180;
+                const lon1 = coordinates[i].lon * Math.PI / 180;
+                const lat2 = coordinates[j].lat * Math.PI / 180;
+                const lon2 = coordinates[j].lon * Math.PI / 180;
+                
+                area += (lon2 - lon1) * Math.sin((lat1 + lat2) / 2);
+            }
+            
+            return Math.abs(area * earthRadius * earthRadius / 2);
+        }
+
+        // 搜尋位置
+        async function searchLocation() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) {
+                setStatus('請輸入搜尋地點', 'error');
+                return;
+            }
+
+            showLoading();
+            setStatus('搜尋位置中...', 'info');
+
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=tw`);
+                const data = await response.json();
+                
+                if (data.length > 0) {
+                    const result = data[0];
+                    const lat = parseFloat(result.lat);
+                    const lon = parseFloat(result.lon);
+                    
+                    map.setView([lat, lon], 17);
+                    
+                    // 添加標記
+                    L.marker([lat, lon])
+                        .addTo(map)
+                        .bindPopup(`<b>${result.display_name}</b>`)
+                        .openPopup();
+                    
+                    setStatus('位置搜尋成功！', 'success');
+                } else {
+                    setStatus('找不到該位置，請嘗試其他關鍵字', 'error');
+                }
+            } catch (error) {
+                setStatus('搜尋失敗，請檢查網路連線', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 取得目前位置
+        function getCurrentLocation() {
+            if (!navigator.geolocation) {
+                setStatus('您的瀏覽器不支援定位功能', 'error');
+                return;
+            }
+
+            showLoading();
+            setStatus('正在取得您的位置...', 'info');
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    map.setView([lat, lon], 17);
+                    
+                    L.marker([lat, lon])
+                        .addTo(map)
+                        .bindPopup('<b>您的位置</b>')
+                        .openPopup();
+                    
+                    setStatus('定位成功！', 'success');
+                    hideLoading();
+                },
+                function(error) {
+                    let message = '定位失敗：';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            message += '使用者拒絕定位請求';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            message += '位置資訊無法取得';
+                            break;
+                        case error.TIMEOUT:
+                            message += '定位請求逾時';
+                            break;
+                        default:
+                            message += '發生未知錯誤';
+                            break;
+                    }
+                    setStatus(message, 'error');
+                    hideLoading();
+                }
+            );
+        }
+
+        // 顯示載入動畫
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        // 隱藏載入動畫
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // 設定狀態訊息
+        function setStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = message;
+            statusDiv.className = `status ${type}`;
+            
+            if (type === 'success' || type === 'error') {
+                setTimeout(() => {
+                    statusDiv.innerHTML = '';
+                    statusDiv.className = '';
+                }, 5000);
+            }
+        }
+
+        // 搜尋框 Enter 鍵支援
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchLocation();
+            }
+        });
+
+        // 初始化
+        window.onload = function() {
+            initMap();
+            setStatus('地圖已載入完成，您可以搜尋位置或使用目前位置來開始探索建築物形狀', 'success');
+        };
+    </script>
+</body>
+</html>
