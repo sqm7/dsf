@@ -1,4 +1,253 @@
-<!DOCTYPE html>
+// 初始化地圖
+        function initMap() {
+            map = L.map('map', {
+                zoomControl: false
+            }).setView([25.0330, 121.5654], 16);
+
+            // 使用更好看的地圖樣式
+            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors, Tiles style by Humanitarian OpenStreetMap Team',
+                maxZoom: 19
+            }).addTo(map);
+
+            // 添加縮放控制到右下角
+            L.control.zoom({
+                position: 'bottomright'
+            }).addTo(map);
+
+            buildingLayer = L.layerGroup().addTo(map);
+            metroLayer = L.layerGroup().addTo(map);
+
+            map.on('click', function(e) {
+                hideBuildingInfo();
+            });
+
+            // 載入捷運系統
+            loadMetroSystems();
+        }
+
+        // 載入捷運系統
+        function loadMetroSystems() {
+            Object.keys(metroSystems).forEach(systemKey => {
+                const system = metroSystems[systemKey];
+                loadMetroLines(system);
+                loadMetroStations(system);
+            });
+        }
+
+        // 載入捷運路線
+        function loadMetroLines(system) {
+            const lineGroups = {};
+            
+            // 按路線分組站點
+            system.stations.forEach(station => {
+                if (!lineGroups[station.line]) {
+                    lineGroups[station.line] = [];
+                }
+                lineGroups[station.line].push(station);
+            });
+
+            // 為每條路線創建路徑
+            Object.keys(lineGroups).forEach(lineKey => {
+                const stations = lineGroups[lineKey];
+                const lineColor = stations[0].lineColor;
+                
+                // 創建路線座標
+                const lineCoords = stations.map(station => [station.lat, station.lng]);
+                
+                // 創建路線
+                const metroLine = L.polyline(lineCoords, {
+                    color: lineColor,
+                    weight: 6,
+                    opacity: 0.8,
+                    smoothFactor: 1,
+                    className: 'metro-line'
+                });
+
+                // 添加路線到圖層
+                metroLayer.addLayer(metroLine);
+            });
+        }
+
+        // 載入捷運站點
+        function loadMetroStations(system) {
+            system.stations.forEach(station => {
+                // 創建捷運站圖標
+                const stationIcon = L.divIcon({
+                    className: 'metro-station',
+                    html: `
+                        <div class="metro-station-marker" style="
+                            background: ${station.lineColor}; 
+                            border: 3px solid white;
+                            border-radius: 50%;
+                            width: 16px;
+                            height: 16px;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                            position: relative;
+                        "></div>
+                    `,
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                });
+
+                // 創建捷運站標記
+                const stationMarker = L.marker([station.lat, station.lng], {
+                    icon: stationIcon,
+                    zIndexOffset: 1000
+                });
+
+                // 添加站點資訊彈窗
+                const popupContent = `
+                    <div style="font-family: 'Inter', sans-serif; padding: 8px;">
+                        <div style="font-weight: 700; font-size: 16px; color: ${station.lineColor}; margin-bottom: 4px;">
+                            🚇 ${station.name}
+                        </div>
+                        <div style="font-size: 13px; color: #64748b; margin-bottom: 6px;">
+                            ${system.name}
+                        </div>
+                        <div style="display: inline-block; background: ${station.lineColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                            ${getLineName(station.line)}
+                        </div>
+                    </div>
+                `;
+
+                stationMarker.bindPopup(popupContent, {
+                    offset: [0, -8],
+                    className: 'metro-popup'
+                });
+
+                // 懸停效果
+                stationMarker.on('mouseover', function() {
+                    this.openPopup();
+                });
+
+                // 添加到圖層
+                metroLayer.addLayer(stationMarker);
+            });
+        }
+
+        // 切換捷運系統顯示
+        function toggleMetroSystem(systemKey) {
+            const checkbox = document.getElementById(`show-${systemKey}-metro`);
+            const system = metroSystems[systemKey];
+            
+            if (checkbox.checked) {
+                loadMetroLines(system);
+                loadMetroStations(system);
+            } else {
+                // 移除該系統的站點和路線
+                metroLayer.eachLayer(layer => {
+                    if (layer._popup && layer._popup._content.includes(system.name)) {
+                        metroLayer.removeLayer(layer);
+                    }
+                });
+            }
+        }
+
+        // 切換全部捷運顯示
+        function toggleAllMetro() {
+            const allCheckbox = document.getElementById('show-all-metro');
+            const systemCheckboxes = ['taipei', 'kaohsiung', 'taoyuan'];
+            
+            systemCheckboxes.forEach(systemKey => {
+                const checkbox = document.getElementById(`show-${systemKey}-metro`);
+                checkbox.checked = allCheckbox.checked;
+                
+                if (allCheckbox.checked) {
+                    toggleMetroSystem(systemKey);
+                } else {
+                    metroLayer.clearLayers();
+                }
+            });
+        }
+
+        // 捷運路網總覽
+        function focusOnMetroArea() {
+            // 設定台灣捷運涵蓋範圍
+            const bounds = L.latLngBounds([
+                [22.5, 120.2], // 西南角 (高雄)
+                [25.2, 121.7]  // 東北角 (台北)
+            ]);
+            
+            map.fitBounds(bounds, {
+                padding: [20, 20]
+            });
+            
+            setStatus('🚇 台灣捷運路網總覽', 'info');
+        }
+
+        // 尋找最近捷運站
+        function findNearestMetro() {
+            if (!navigator.geolocation) {
+                setStatus('❌ 您的瀏覽器不支援定位功能', 'error');
+                return;
+            }
+
+            showLoading();
+            setStatus('📍 正在尋找最近的捷運站...', 'info');
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+                    
+                    let nearestStation = null;
+                    let minDistance = Infinity;
+                    
+                    // 搜尋所有捷運站
+                    Object.values(metroSystems).forEach(system => {
+                        system.stations.forEach(station => {
+                            const distance = calculateDistance(
+                                userLat, userLng, 
+                                station.lat, station.lng
+                            );
+                            
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                nearestStation = { ...station, system: system.name };
+                            }
+                        });
+                    });
+                    
+                    if (nearestStation) {
+                        // 移動地圖到最近捷運站
+                        map.setView([nearestStation.lat, nearestStation.lng], 16);
+                        
+                        // 創建使用者位置標記
+                        L.marker([userLat, userLng], {
+                            icon: L.divIcon({
+                                className: 'user-location',
+                                html: '<div style="background: #10b981; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 3px solid white; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">👤</div>',
+                                iconSize: [20, 20],
+                                iconAnchor: [10, 10]
+                            })
+                        }).addTo(map);
+                        
+                        setStatus(`🎯 最近捷運站：${nearestStation.name} (距離 ${minDistance.toFixed(0)}公尺)`, 'success');
+                    } else {
+                        setStatus('❌ 找不到附近的捷運站', 'error');
+                    }
+                    
+                    hideLoading();
+                },
+                function(error) {
+                    setStatus('❌ 定位失敗，無法尋找最近捷運站', 'error');
+                    hideLoading();
+                }
+            );
+        }
+
+        // 計算兩點間距離 (公尺)
+        function calculateDistance(lat1, lng1, lat2, lng2) {
+            const R = 6371000; // 地球半徑 (公尺)
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLng/2) * Math.sin(dLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -558,6 +807,25 @@
             }
         }
 
+        /* 捷運相關樣式 */
+        .metro-line {
+            z-index: 500;
+        }
+
+        .metro-station {
+            z-index: 1000;
+        }
+
+        .metro-popup .leaflet-popup-content {
+            margin: 0;
+            padding: 0;
+        }
+
+        .metro-popup .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
         /* 自定義滾動條 */
         .sidebar::-webkit-scrollbar {
             width: 6px;
@@ -620,6 +888,40 @@
                     </button>
                 </div>
 
+                <div class="control-card">
+                    <div class="card-title">
+                        <span class="card-icon">🚇</span>
+                        捷運系統
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">顯示捷運路線</label>
+                        <div class="checkbox-grid">
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="show-taipei-metro" checked onchange="toggleMetroSystem('taipei')">
+                                <label for="show-taipei-metro">台北捷運</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="show-kaohsiung-metro" checked onchange="toggleMetroSystem('kaohsiung')">
+                                <label for="show-kaohsiung-metro">高雄捷運</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="show-taoyuan-metro" checked onchange="toggleMetroSystem('taoyuan')">
+                                <label for="show-taoyuan-metro">桃園捷運</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="show-all-metro" checked onchange="toggleAllMetro()">
+                                <label for="show-all-metro">全部顯示</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="focusOnMetroArea()">
+                        🎯 捷運路網總覽
+                    </button>
+                    <button class="btn btn-secondary" onclick="findNearestMetro()">
+                        📍 最近捷運站
+                    </button>
+                </div>
                 <div class="control-card">
                     <div class="card-title">
                         <span class="card-icon">🎛️</span>
@@ -735,9 +1037,197 @@
     <script>
         let map;
         let buildingLayer;
+        let metroLayer;
         let currentBuildings = [];
         let selectedBuilding = null;
         let userAddedHeights = {};
+        
+        // 台灣捷運系統資料
+        const metroSystems = {
+            taipei: {
+                name: '台北捷運',
+                color: '#0066cc',
+                stations: [
+                    // 淡水信義線 (紅線)
+                    {name: '淡水', lat: 25.1675, lng: 121.4456, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '紅樹林', lat: 25.1538, lng: 121.4582, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '竹圍', lat: 25.1370, lng: 121.4598, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '關渡', lat: 25.1256, lng: 121.4672, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '忠義', lat: 25.1307, lng: 121.4735, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '復興崗', lat: 25.1373, lng: 121.4851, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '北投', lat: 25.1314, lng: 121.4985, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '奇岩', lat: 25.1257, lng: 121.5015, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '唭哩岸', lat: 25.1202, lng: 121.5065, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '石牌', lat: 25.1146, lng: 121.5156, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '明德', lat: 25.1097, lng: 121.5185, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '芝山', lat: 25.1034, lng: 121.5225, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '士林', lat: 25.0939, lng: 121.5260, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '劍潭', lat: 25.0847, lng: 121.5250, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '圓山', lat: 25.0717, lng: 121.5200, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '民權西路', lat: 25.0626, lng: 121.5200, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '雙連', lat: 25.0576, lng: 121.5200, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '中山', lat: 25.0520, lng: 121.5200, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '台北車站', lat: 25.0478, lng: 121.5170, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '台大醫院', lat: 25.0416, lng: 121.5170, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '中正紀念堂', lat: 25.0331, lng: 121.5183, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '東門', lat: 25.0341, lng: 121.5286, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '大安森林公園', lat: 25.0333, lng: 121.5356, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '大安', lat: 25.0326, lng: 121.5434, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '信義安和', lat: 25.0330, lng: 121.5527, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '台北101/世貿', lat: 25.0330, lng: 121.5637, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    {name: '象山', lat: 25.0330, lng: 121.5695, line: 'tamsui-xinyi', lineColor: '#e3002c'},
+                    
+                    // 板南線 (藍線)
+                    {name: '頂埔', lat: 24.9588, lng: 121.4218, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '永寧', lat: 24.9665, lng: 121.4368, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '土城', lat: 24.9732, lng: 121.4448, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '海山', lat: 24.9857, lng: 121.4486, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '亞東醫院', lat: 25.0089, lng: 121.4529, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '府中', lat: 25.0170, lng: 121.4594, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '板橋', lat: 25.0146, lng: 121.4627, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '新埔', lat: 25.0230, lng: 121.4676, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '江子翠', lat: 25.0299, lng: 121.4725, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '龍山寺', lat: 25.0378, lng: 121.4998, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '西門', lat: 25.0421, lng: 121.5081, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '台北車站', lat: 25.0478, lng: 121.5170, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '善導寺', lat: 25.0446, lng: 121.5244, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '忠孝新生', lat: 25.0423, lng: 121.5324, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '忠孝復興', lat: 25.0418, lng: 121.5442, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '忠孝敦化', lat: 25.0418, lng: 121.5496, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '國父紀念館', lat: 25.0418, lng: 121.5575, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '市政府', lat: 25.0418, lng: 121.5659, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '永春', lat: 25.0406, lng: 121.5766, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '後山埤', lat: 25.0446, lng: 121.5825, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '昆陽', lat: 25.0501, lng: 121.5930, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '南港', lat: 25.0543, lng: 121.6069, line: 'bannan', lineColor: '#0070bd'},
+                    {name: '南港展覽館', lat: 25.0556, lng: 121.6178, line: 'bannan', lineColor: '#0070bd'},
+                    
+                    // 文湖線 (棕線)
+                    {name: '動物園', lat: 24.9989, lng: 121.5784, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '木柵', lat: 25.0004, lng: 121.5735, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '萬芳社區', lat: 25.0039, lng: 121.5684, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '萬芳醫院', lat: 25.0072, lng: 121.5583, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '辛亥', lat: 25.0066, lng: 121.5575, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '麟光', lat: 25.0180, lng: 121.5573, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '六張犁', lat: 25.0243, lng: 121.5531, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '科技大樓', lat: 25.0256, lng: 121.5436, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '大安', lat: 25.0326, lng: 121.5434, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '忠孝復興', lat: 25.0418, lng: 121.5442, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '南京復興', lat: 25.0521, lng: 121.5442, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '中山國中', lat: 25.0605, lng: 121.5442, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '松山機場', lat: 25.0628, lng: 121.5515, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '大直', lat: 25.0794, lng: 121.5474, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '劍南路', lat: 25.0841, lng: 121.5522, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '西湖', lat: 25.0827, lng: 121.5672, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '港墘', lat: 25.0794, lng: 121.5750, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '文德', lat: 25.0785, lng: 121.5840, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '內湖', lat: 25.0836, lng: 121.5896, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '大湖公園', lat: 25.0829, lng: 121.6010, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '葫洲', lat: 25.0722, lng: 121.6088, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '東湖', lat: 25.0674, lng: 121.6114, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '南港軟體園區', lat: 25.0650, lng: 121.6157, line: 'wenhu', lineColor: '#c48c31'},
+                    {name: '南港展覽館', lat: 25.0556, lng: 121.6178, line: 'wenhu', lineColor: '#c48c31'},
+
+                    // 松山新店線 (綠線)
+                    {name: '新店', lat: 24.9574, lng: 121.5374, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '新店區公所', lat: 24.9678, lng: 121.5412, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '七張', lat: 24.9758, lng: 121.5426, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '小碧潭', lat: 24.9759, lng: 121.5297, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '大坪林', lat: 24.9826, lng: 121.5410, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '景美', lat: 24.9933, lng: 121.5407, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '萬隆', lat: 25.0018, lng: 121.5394, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '公館', lat: 25.0148, lng: 121.5342, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '台電大樓', lat: 25.0209, lng: 121.5279, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '古亭', lat: 25.0266, lng: 121.5225, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '中正紀念堂', lat: 25.0331, lng: 121.5183, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '小南門', lat: 25.0356, lng: 121.5096, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '西門', lat: 25.0421, lng: 121.5081, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '北門', lat: 25.0495, lng: 121.5101, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '中山', lat: 25.0520, lng: 121.5200, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '松江南京', lat: 25.0520, lng: 121.5324, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '南京復興', lat: 25.0521, lng: 121.5442, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '台北小巨蛋', lat: 25.0521, lng: 121.5496, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '南京三民', lat: 25.0521, lng: 121.5644, line: 'songshan-xindian', lineColor: '#008659'},
+                    {name: '松山', lat: 25.0490, lng: 121.5782, line: 'songshan-xindian', lineColor: '#008659'},
+
+                    // 中和新蘆線 (橙線)
+                    {name: '南勢角', lat: 24.9905, lng: 121.5080, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '景安', lat: 25.0058, lng: 121.5115, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '永安市場', lat: 25.0132, lng: 121.5152, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '頂溪', lat: 25.0204, lng: 121.5170, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '古亭', lat: 25.0266, lng: 121.5225, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '東門', lat: 25.0341, lng: 121.5286, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '忠孝新生', lat: 25.0423, lng: 121.5324, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '松江南京', lat: 25.0520, lng: 121.5324, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '行天宮', lat: 25.0581, lng: 121.5330, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '中山國小', lat: 25.0626, lng: 121.5260, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '民權西路', lat: 25.0626, lng: 121.5200, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '大橋頭', lat: 25.0631, lng: 121.5128, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '台北橋', lat: 25.0631, lng: 121.4989, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '菜寮', lat: 25.0631, lng: 121.4854, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '三重', lat: 25.0631, lng: 121.4854, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '先嗇宮', lat: 25.0710, lng: 121.4721, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '頭前庄', lat: 25.0778, lng: 121.4610, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '新莊', lat: 25.0836, lng: 121.4524, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '輔大', lat: 25.0836, lng: 121.4341, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '丹鳳', lat: 25.0836, lng: 121.4241, line: 'zhonghe-xinlu', lineColor: '#f8b61c'},
+                    {name: '迴龍', lat: 25.0836, lng: 121.4141, line: 'zhonghe-xinlu', lineColor: '#f8b61c'}
+                ]
+            },
+            kaohsiung: {
+                name: '高雄捷運',
+                color: '#00aa55',
+                stations: [
+                    // 紅線
+                    {name: '小港', lat: 22.5656, lng: 120.3500, line: 'red', lineColor: '#e60012'},
+                    {name: '高雄國際機場', lat: 22.5778, lng: 120.3500, line: 'red', lineColor: '#e60012'},
+                    {name: '草衙', lat: 22.5895, lng: 120.3500, line: 'red', lineColor: '#e60012'},
+                    {name: '前鎮高中', lat: 22.6009, lng: 120.3500, line: 'red', lineColor: '#e60012'},
+                    {name: '凱旋', lat: 22.6121, lng: 120.3500, line: 'red', lineColor: '#e60012'},
+                    {name: '獅甲', lat: 22.6217, lng: 120.3191, line: 'red', lineColor: '#e60012'},
+                    {name: '三多商圈', lat: 22.6337, lng: 120.3013, line: 'red', lineColor: '#e60012'},
+                    {name: '中央公園', lat: 22.6237, lng: 120.3015, line: 'red', lineColor: '#e60012'},
+                    {name: '美麗島', lat: 22.6319, lng: 120.3015, line: 'red', lineColor: '#e60012'},
+                    {name: '高雄車站', lat: 22.6391, lng: 120.3015, line: 'red', lineColor: '#e60012'},
+                    {name: '後驛', lat: 22.6502, lng: 120.3015, line: 'red', lineColor: '#e60012'},
+                    {name: '凹子底', lat: 22.6726, lng: 120.3015, line: 'red', lineColor: '#e60012'},
+                    {name: '巨蛋', lat: 22.6814, lng: 120.3015, line: 'red', lineColor: '#e60012'},
+                    {name: '生態園區', lat: 22.6934, lng: 120.3015, line: 'red', lineColor: '#e60012'},
+                    {name: '左營', lat: 22.6879, lng: 120.3070, line: 'red', lineColor: '#e60012'},
+                    
+                    // 橘線
+                    {name: '西子灣', lat: 22.6253, lng: 120.2662, line: 'orange', lineColor: '#ff6900'},
+                    {name: '鹽埕埔', lat: 22.6253, lng: 120.2829, line: 'orange', lineColor: '#ff6900'},
+                    {name: '市議會', lat: 22.6253, lng: 120.2940, line: 'orange', lineColor: '#ff6900'},
+                    {name: '美麗島', lat: 22.6319, lng: 120.3015, line: 'orange', lineColor: '#ff6900'},
+                    {name: '信義國小', lat: 22.6319, lng: 120.3132, line: 'orange', lineColor: '#ff6900'},
+                    {name: '文化中心', lat: 22.6319, lng: 120.3247, line: 'orange', lineColor: '#ff6900'},
+                    {name: '五塊厝', lat: 22.6319, lng: 120.3362, line: 'orange', lineColor: '#ff6900'},
+                    {name: '技擊館', lat: 22.6319, lng: 120.3477, line: 'orange', lineColor: '#ff6900'},
+                    {name: '衛武營', lat: 22.6319, lng: 120.3592, line: 'orange', lineColor: '#ff6900'},
+                    {name: '鳳山西站', lat: 22.6319, lng: 120.3707, line: 'orange', lineColor: '#ff6900'},
+                    {name: '鳳山', lat: 22.6274, lng: 120.3822, line: 'orange', lineColor: '#ff6900'},
+                    {name: '大東', lat: 22.6274, lng: 120.3937, line: 'orange', lineColor: '#ff6900'}
+                ]
+            },
+            taoyuan: {
+                name: '桃園捷運',
+                color: '#663399',
+                stations: [
+                    // 機場線 (紫線)
+                    {name: '台北車站', lat: 25.0478, lng: 121.5170, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '三重', lat: 25.0631, lng: 121.4854, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '新北產業園區', lat: 25.0785, lng: 121.4596, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '長庚醫院', lat: 25.0785, lng: 121.3675, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '體育大學', lat: 25.0785, lng: 121.3475, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '坑口', lat: 25.0785, lng: 121.3275, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '山鼻', lat: 25.0785, lng: 121.3075, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '林口', lat: 25.0785, lng: 121.2875, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '桃園機場第二航廈', lat: 25.0785, lng: 121.2275, line: 'airport', lineColor: '#8b5a96'},
+                    {name: '桃園機場第一航廈', lat: 25.0785, lng: 121.2075, line: 'airport', lineColor: '#8b5a96'}
+                ]
+            }
+        };
 
         // 初始化地圖
         function initMap() {
