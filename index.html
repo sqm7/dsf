@@ -199,25 +199,31 @@
             margin-bottom: 8px;
         }
 
-        .input-field {
+        .input-field, #mapStyleEditor {
             width: 100%;
             padding: 14px 16px;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 12px;
             color: white;
             font-size: 14px;
             font-weight: 500;
             transition: all 0.3s ease;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        #mapStyleEditor {
+            min-height: 200px;
+            resize: vertical;
         }
 
         .input-field::placeholder {
             color: rgba(255, 255, 255, 0.5);
         }
 
-        .input-field:focus {
+        .input-field:focus, #mapStyleEditor:focus {
             outline: none;
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(0, 0, 0, 0.3);
             border-color: var(--accent-blue);
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
         }
@@ -595,6 +601,16 @@
                     <button class="btn btn-secondary" onclick="getCurrentLocation()">目前位置</button>
                     <button class="btn btn-success" onclick="loadBuildingsWithHeight()">載入建築分析</button>
                 </div>
+
+                <!-- NEW: 地圖樣式編輯器 -->
+                <div class="control-card">
+                    <div class="card-title">地圖樣式編輯器</div>
+                    <div class="input-group">
+                        <label class="input-label">貼上地圖樣式 JSON</label>
+                        <textarea id="mapStyleEditor"></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="applyMapStyle()">套用地圖樣式</button>
+                </div>
                 
                 <!-- 營運中捷運路網卡片 -->
                 <div class="control-card">
@@ -700,14 +716,36 @@
 
     <!-- 引用 Leaflet.js 的 JavaScript 函式庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <!-- NEW: 引用 Google Maps API 和 Leaflet-GoogleMutant 插件 -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=&v=3.55"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.gridlayer.googlemutant@0.14.0/dist/Leaflet.GoogleMutant.js"></script>
+    
     <script>
         // --- 全域變數定義 ---
         let map; // Leaflet 地圖實例
+        let baseLayer; // 地圖底圖圖層
         let buildingLayer; // 建築物圖層
         let metroLayer; // 捷運圖層
         let currentBuildings = []; // 當前載入的建築物資料
         let selectedBuilding = null; // 當前選擇的建築物
         let userAddedHeights = {}; // 用戶手動新增的建築高度資料
+
+        // --- 預設地圖樣式 (使用者提供的暗色主題) ---
+        const defaultMapStyle = [
+            {"featureType":"all","elementType":"labels.text.fill","stylers":[{"saturation":36},{"color":"#ffffff"},{"lightness":40}]},
+            {"featureType":"all","elementType":"labels.text.stroke","stylers":[{"visibility":"on"},{"color":"#000000"},{"lightness":16}]},
+            {"featureType":"all","elementType":"labels.icon","stylers":[{"visibility":"off"}]},
+            {"featureType":"administrative","elementType":"geometry.fill","stylers":[{"color":"#000000"},{"lightness":20}]},
+            {"featureType":"administrative","elementType":"geometry.stroke","stylers":[{"color":"#000000"},{"lightness":17},{"weight":1.2}]},
+            {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":20}]},
+            {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":21}]},
+            {"featureType":"road.highway","elementType":"geometry.fill","stylers":[{"color":"#000000"},{"lightness":17}]},
+            {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#000000"},{"lightness":29},{"weight":0.2}]},
+            {"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":18}]},
+            {"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":16}]},
+            {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":19}]},
+            {"featureType":"water","elementType":"geometry","stylers":[{"color":"#1a1a1a"},{"lightness":17}]}
+        ];
 
         // --- 台灣捷運系統資料 ---
         const metroSystems = {
@@ -912,15 +950,15 @@
         function initMap() {
             map = L.map('map', { zoomControl: false }).setView([25.0330, 121.5654], 16); // 預設視角在台北101
 
-            // 使用 Humanitarian OpenStreetMap Team 的地圖圖磚，視覺風格較佳
-            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors, Tiles style by Humanitarian OpenStreetMap Team',
-                maxZoom: 19
+            // 初始化使用 Google Maps 圖層與預設樣式
+            baseLayer = L.gridLayer.googleMutant({
+                type: 'roadmap',
+                styles: defaultMapStyle
             }).addTo(map);
 
             L.control.zoom({ position: 'bottomright' }).addTo(map); // 縮放控制項置於右下角
 
-            // 初始化圖層
+            // 初始化其他圖層
             buildingLayer = L.layerGroup().addTo(map);
             metroLayer = L.layerGroup().addTo(map);
 
@@ -930,6 +968,41 @@
             });
         }
         
+        /**
+         * 根據使用者在編輯器中輸入的 JSON 套用新的地圖樣式
+         */
+        function applyMapStyle() {
+            const editor = document.getElementById('mapStyleEditor');
+            let newStyle;
+            try {
+                // 嘗試解析 JSON
+                newStyle = JSON.parse(editor.value);
+            } catch (error) {
+                // 如果解析失敗，顯示錯誤訊息
+                setStatus(`JSON 格式錯誤: ${error.message}`, 'error');
+                return;
+            }
+
+            // 移除舊的底圖圖層
+            if (baseLayer) {
+                map.removeLayer(baseLayer);
+            }
+            
+            // 創建並加入新的 Google Maps 圖層
+            baseLayer = L.gridLayer.googleMutant({
+                type: 'roadmap', // 基本地圖類型
+                styles: newStyle // 套用新的樣式
+            });
+            map.addLayer(baseLayer);
+
+            // 確保捷運和建築圖層在最上層
+            baseLayer.bringToBack();
+            metroLayer.bringToFront();
+            buildingLayer.bringToFront();
+            
+            setStatus('地圖樣式已成功更新！', 'success');
+        }
+
         /**
          * 根據使用者勾選狀態，重新繪製所有可見的捷運路線
          */
@@ -1519,6 +1592,8 @@
         window.onload = () => {
             initMap();
             redrawAllVisibleMetro();
+            // 將預設樣式填入編輯器
+            document.getElementById('mapStyleEditor').value = JSON.stringify(defaultMapStyle, null, 2);
             setStatus('Elite Property Analytics 已就緒！', 'success');
             document.getElementById('statsPanel').style.display = 'none'; // 預設隱藏統計面板
         };
