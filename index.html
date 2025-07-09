@@ -1,1602 +1,752 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elite Property Analytics - 精英房地產分析平台</title>
-    <!-- 引用 Leaflet.js 的 CSS 樣式表，用於地圖顯示 -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
-    <!-- 引用 Google Fonts 的 Inter 字體 -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        /* CSS 變數定義，方便統一管理顏色、漸層、陰影等樣式 */
-        :root {
-            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --dark-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            --glass-bg: rgba(255, 255, 255, 0.1);
-            --glass-border: rgba(255, 255, 255, 0.2);
-            --text-primary: #2c3e50;
-            --text-secondary: #64748b;
-            --accent-blue: #3b82f6;
-            --accent-purple: #8b5cf6;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --error: #ef4444;
-            --shadow-light: 0 4px 20px rgba(0, 0, 0, 0.1);
-            --shadow-medium: 0 8px 40px rgba(0, 0, 0, 0.15);
-            --shadow-heavy: 0 20px 60px rgba(0, 0, 0, 0.25);
-        }
-
-        /* 基本樣式重置 */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        /* 整體頁面樣式 */
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--dark-gradient);
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-
-        /* 動態背景漸層效果 */
-        body::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: 
-                radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
-                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15) 0%, transparent 50%),
-                radial-gradient(circle at 40% 80%, rgba(120, 119, 255, 0.1) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: 0;
-        }
-        
-        /* 未來捷運站點的特殊樣式 */
-        .metro-station.future .metro-station-marker {
-            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 0 15px 5px rgba(156, 39, 176, 0.6);
-            animation: pulse 2s infinite; /* 脈衝動畫 */
-        }
-        
-        /* 從KML讀取的未來捷運系統站點樣式 */
-        .metro-station.future-system .metro-station-marker {
-            background: #9c27b0 !important;
-            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 0 20px 8px rgba(156, 39, 176, 0.7);
-            animation: pulse 1.5s infinite;
-        }
-        
-        /* 脈衝動畫效果 */
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 0.9; }
-            50% { transform: scale(1.2); opacity: 1; }
-            100% { transform: scale(1); opacity: 0.9; }
-        }
-        
-        /* 未來捷運路線的虛線動畫樣式 */
-        .metro-line.future {
-            stroke-dasharray: 8, 8;
-            stroke-linecap: round;
-            animation: dash 20s linear infinite;
-        }
-        
-        /* 虛線滾動動畫 */
-        @keyframes dash {
-            to { stroke-dashoffset: 200; }
-        }
-
-        /* 主應用程式容器 */
-        .app-container {
-            display: flex;
-            height: 100vh;
-            position: relative;
-            z-index: 1;
-        }
-
-        /* 側邊欄樣式 */
-        .sidebar {
-            width: 420px;
-            background: rgba(255, 255, 255, 0.05); /* 玻璃擬態背景 */
-            backdrop-filter: blur(40px); /* 模糊效果 */
-            border-right: 1px solid var(--glass-border);
-            overflow-y: auto;
-            position: relative;
-        }
-
-        /* 側邊欄的漸層覆蓋 */
-        .sidebar::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
-            pointer-events: none;
-        }
-
-        .sidebar-content {
-            padding: 32px;
-            position: relative;
-            z-index: 2;
-        }
-
-        /* 頂部標題區域 */
-        .header {
-            margin-bottom: 40px;
-            text-align: center;
-        }
-
-        .brand-logo {
-            width: 48px;
-            height: 48px;
-            background: var(--primary-gradient);
-            border-radius: 12px;
-            margin: 0 auto 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: 800;
-            color: white;
-            box-shadow: var(--shadow-medium);
-        }
-
-        .app-title {
-            font-size: 28px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #ffffff 0%, #e2e8f0 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent; /* 文字漸層效果 */
-            margin-bottom: 8px;
-        }
-
-        .app-subtitle {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            font-weight: 400;
-            line-height: 1.6;
-        }
-
-        /* 控制項卡片 */
-        .control-card {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 24px;
-            margin-bottom: 24px;
-            backdrop-filter: blur(20px);
-            transition: all 0.3s ease;
-        }
-
-        .control-card:hover {
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-medium);
-        }
-
-        .card-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: white;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        /* 輸入框樣式 */
-        .input-group {
-            margin-bottom: 16px;
-        }
-
-        .input-label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            color: rgba(255, 255, 255, 0.8);
-            margin-bottom: 8px;
-        }
-
-        .input-field, #mapStyleEditor {
-            width: 100%;
-            padding: 14px 16px;
-            background: rgba(0, 0, 0, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 12px;
-            color: white;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            font-family: 'Courier New', Courier, monospace;
-        }
-        
-        #mapStyleEditor {
-            min-height: 200px;
-            resize: vertical;
-        }
-
-        .input-field::placeholder {
-            color: rgba(255, 255, 255, 0.5);
-        }
-
-        .input-field:focus, #mapStyleEditor:focus {
-            outline: none;
-            background: rgba(0, 0, 0, 0.3);
-            border-color: var(--accent-blue);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-        }
-
-        /* 按鈕樣式 */
-        .btn {
-            width: 100%;
-            padding: 14px 20px;
-            border: none;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .btn-primary {
-            background: var(--primary-gradient);
-            color: white;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.5);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            margin-bottom: 12px;
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateY(-1px);
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
-            color: white;
-            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
-        }
-
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.5);
-        }
-
-        /* 篩選控制項 */
-        .filter-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .filter-input {
-            padding: 12px 14px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            color: white;
-            font-size: 13px;
-            text-align: center;
-        }
-
-        .checkbox-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-top: 16px;
-        }
-
-        .checkbox-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-
-        .checkbox-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .checkbox-item input {
-            accent-color: var(--accent-blue);
-        }
-
-        .checkbox-item label {
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-        }
-
-        /* 統計資料面板 */
-        .stats-panel {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .stat-item {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 20px;
-            text-align: center;
-            backdrop-filter: blur(20px);
-            transition: all 0.3s ease;
-        }
-
-        .stat-item:hover {
-            transform: translateY(-2px);
-            background: rgba(255, 255, 255, 0.12);
-        }
-
-        .stat-number {
-            font-size: 24px;
-            font-weight: 800;
-            color: white;
-            margin-bottom: 4px;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.7);
-            font-weight: 500;
-        }
-
-        /* 圖例樣式 */
-        .legend {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 24px;
-            backdrop-filter: blur(20px);
-        }
-
-        .legend-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: white;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 6px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        .legend-text {
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 14px;
-            font-weight: 500;
-        }
-
-        /* 建築資訊面板 */
-        .info-panel {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 24px;
-            margin-top: 24px;
-            box-shadow: var(--shadow-heavy);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            display: none; /* 預設隱藏 */
-        }
-
-        .info-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 16px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e2e8f0;
-        }
-
-        .info-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid #f1f5f9;
-        }
-
-        .info-item:last-child {
-            border-bottom: none;
-        }
-
-        .info-label {
-            color: var(--text-secondary);
-            font-weight: 500;
-            font-size: 14px;
-        }
-
-        .info-value {
-            color: var(--text-primary);
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        /* 地圖容器 */
-        .map-container {
-            flex: 1;
-            position: relative;
-            border-radius: 0 24px 24px 0;
-            overflow: hidden;
-            margin: 16px 16px 16px 0;
-            box-shadow: var(--shadow-heavy);
-        }
-
-        #map {
-            height: 100%;
-            width: 100%;
-        }
-
-        /* 狀態提示列 */
-        .status-bar {
-            position: absolute;
-            top: 24px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            min-width: 300px;
-            text-align: center;
-        }
-
-        .status {
-            padding: 12px 24px;
-            border-radius: 50px;
-            font-size: 14px;
-            font-weight: 600;
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: var(--shadow-medium);
-            display: none;
-        }
-
-        .status.success { background: rgba(16, 185, 129, 0.9); color: white; }
-        .status.error { background: rgba(239, 68, 68, 0.9); color: white; }
-        .status.info { background: rgba(59, 130, 246, 0.9); color: white; }
-
-        /* 載入中覆蓋層 */
-        .loading-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(10px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-            display: none; /* 預設隱藏 */
-        }
-
-        .loading-content {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 40px;
-            border-radius: 20px;
-            text-align: center;
-            box-shadow: var(--shadow-heavy);
-        }
-
-        .spinner {
-            width: 48px;
-            height: 48px;
-            border: 4px solid #e2e8f0;
-            border-top: 4px solid var(--accent-blue);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 16px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-            color: var(--text-primary);
-            font-weight: 600;
-            font-size: 16px;
-        }
-
-        /* 響應式設計 */
-        @media (max-width: 1200px) {
-            .sidebar { width: 360px; }
-            .sidebar-content { padding: 24px; }
-        }
-
-        @media (max-width: 992px) {
-            .app-container { flex-direction: column; height: auto; }
-            .sidebar { width: 100%; height: auto; max-height: 50vh; border-right: none; }
-            .map-container { flex: 1; height: calc(100vh - 50vh); margin: 0; border-radius: 0; }
-        }
-        
-         @media (max-width: 768px) {
-             .sidebar { max-height: 45vh; }
-             .map-container { height: 55vh; }
-         }
-
-        /* 捷運相關樣式 */
-        .metro-line { z-index: 500; }
-        .metro-station { z-index: 1000; }
-        .metro-line.future { z-index: 499; }
-        .metro-station.future { z-index: 999; }
-        
-        .metro-popup .leaflet-popup-content-wrapper {
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-        }
-        .metro-popup .leaflet-popup-content {
-            margin: 0; padding: 0;
-        }
-
-        /* 自定義滾動條 */
-        .sidebar::-webkit-scrollbar { width: 6px; }
-        .sidebar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
-        .sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.3); border-radius: 3px; }
-        .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.5); }
-
-        /* 建築高度標籤樣式 */
-        .height-label {
-            background: rgba(0, 0, 0, 0.8) !important;
-            color: white !important;
-            padding: 4px 8px !important;
-            border-radius: 6px !important;
-            font-size: 11px !important;
-            font-weight: 700 !important;
-            border: 1px solid rgba(255, 255, 255, 0.2) !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>不動產數據查詢平台 (v3.9 - 介面層級修正)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        'dark-bg': '#1a1d29',
+        'dark-card': '#252836',
+        'cyan-accent': '#06b6d4',
+        'purple-accent': '#8b5cf6',
+      }
+    }
+  }
+}
+</script>
+<style>
+body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background: #1a1d29; color: #e5e7eb; }
+.glass-card { background: rgba(37, 40, 54, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+.form-input, .form-select, .form-multiselect { background-color: #1f2937; border: 1px solid #4b5563; color: #d1d5db; }
+.form-input:focus, .form-select:focus, .form-input:has(input:focus), .form-multiselect:focus-within { border-color: #06b6d4; box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.5); outline: none; }
+select:disabled, input:disabled, .form-multiselect.disabled { background-color: #374151; cursor: not-allowed; opacity: 0.7; }
+.table-container { overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border-bottom: 1px solid #374151; padding: 0.75rem 1rem; text-align: left; font-size: 0.875rem; white-space: nowrap; }
+thead th { background-color: #252836; position: sticky; top: 0; z-index: 10; font-weight: 600; color: #9ca3af; }
+.loader { border: 4px solid #374151; border-top: 4px solid #06b6d4; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+.loader-sm { border: 2px solid #374151; border-top: 2px solid #06b6d4; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(5px); transition: opacity 0.3s ease; }
+.modal-container { background: #252836; padding: 2rem; border-radius: 12px; width: 90%; max-width: 1200px; max-height: 85vh; overflow-y: auto; border: 1px solid #4b5563; transform: scale(0.95); transition: transform 0.3s ease; }
+.modal-overlay:not(.hidden) .modal-container { transform: scale(1); }
+.multi-tag { display: inline-flex; align-items: center; background-color: #4b5563; color: #d1d5db; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; flex-shrink: 0; }
+.multi-tag-remove { margin-left: 0.5rem; cursor: pointer; font-weight: bold; }
+.multi-tag-remove:hover { color: #f87171; }
+.suggestions-container { max-height: 200px; overflow-y: auto; }
+.suggestion-item { display: flex; align-items: center; padding: 0.5rem 1rem; cursor: pointer; }
+.suggestion-item:hover, .suggestion-item.active { background-color: #374151; }
+.suggestion-item input[type="checkbox"] { margin-right: 0.75rem; height: 1rem; width: 1rem; border-radius: 0.25rem; border-color: #6b7280; background-color: #374151; color: #06b6d4; cursor: pointer; }
+.suggestion-item input[type="checkbox"]:focus { ring: #06b6d4; }
+.scrollable-cell { max-width: 25ch; overflow-x: auto; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
+.scrollable-filter-container { padding-bottom: 8px; }
+.scrollable-cell::-webkit-scrollbar, .form-multiselect::-webkit-scrollbar, .scrollable-filter-container::-webkit-scrollbar { height: 4px; }
+.scrollable-cell::-webkit-scrollbar-track, .form-multiselect::-webkit-scrollbar-track, .scrollable-filter-container::-webkit-scrollbar-track { background: transparent; }
+.scrollable-cell::-webkit-scrollbar-thumb, .form-multiselect::-webkit-scrollbar-thumb, .scrollable-filter-container::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 20px; }
+.tab-button { padding: 0.75rem 1.5rem; font-medium; border-bottom: 3px solid transparent; transition: all 0.3s ease; color: #9ca3af; }
+.tab-button.active { color: #06b6d4; border-bottom-color: #06b6d4; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.metric-card { background-color: #1f2937; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #374151; }
+.metric-card-title { font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.5rem; }
+.metric-card-value { font-size: 2rem; font-weight: 700; color: #e5e7eb; }
+.metric-card-unit { font-size: 1rem; color: #6b7280; margin-left: 0.5rem; }
+.sortable-th { cursor: pointer; user-select: none; }
+.sortable-th:hover { color: #e5e7eb; }
+.sortable-th .sort-icon { display: inline-block; margin-left: 0.5rem; color: #6b7280; transition: all 0.2s; }
+.sortable-th.asc .sort-icon { transform: rotate(180deg); color: #06b6d4; }
+.sortable-th.desc .sort-icon { color: #06b6d4; }
+.report-section-title { font-size: 1.25rem; font-weight: 600; color: #e5e7eb; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #374151;}
+.avg-type-btn { color: #9ca3af; }
+.avg-type-btn.active { background-color: #06b6d4; color: #ffffff; }
+.capsule-btn { padding: 0.375rem 1rem; border-radius: 9999px; border: 1px solid #4b5563; background-color: transparent; color: #d1d5db; cursor: pointer; transition: all 0.2s ease; font-size: 0.875rem; white-space: nowrap; flex-shrink: 0; }
+.capsule-btn.active, .capsule-btn:hover { background-color: #06b6d4; border-color: #06b6d4; color: white; }
+.sub-tab-nav { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #374151; padding-bottom: 0.75rem; }
+.sub-tab-btn { padding: 0.5rem 1rem; border-radius: 0.5rem; color: #9ca3af; font-weight: 500; cursor: pointer; transition: background-color 0.2s; }
+.sub-tab-btn.active, .sub-tab-btn:hover { background-color: #252836; color: #e5e7eb; }
+.has-tooltip { position: relative; cursor: help; display: inline-block; }
+.has-tooltip::after { content: attr(data-tooltip); position: absolute; top: 100%; left: 50%; transform: translateX(-50%) translateY(8px); background-color: #06b6d4; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.875rem; z-index: 100; opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0.2s; pointer-events: none; white-space: nowrap; }
+.has-tooltip:hover::after { opacity: 1; visibility: visible; }
+.parking-icon { color: #a5b4fc; margin-left: 4px; font-size: 0.75rem; }
+.grid-cell-content { line-height: 1.6; display: flex; flex-direction: column; align-items: flex-start; }
+.special-remark-row { background-color: rgba(139, 92, 246, 0.1); }
+.special-remark-row:hover { background-color: rgba(139, 92, 246, 0.2) !important; }
+.special-remark-icon { color: #facc15; margin-right: 4px; }
+.btn-loading { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+.heatmap-cell { transition: opacity 0.3s ease; }
+.heatmap-cell.dimmed { opacity: 0.15; }
+.legend-item { display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; border: 1px solid #4b5563; cursor: pointer; transition: all 0.2s ease; user-select: none; }
+.legend-item.active, .legend-item:hover { background-color: #06b6d4; border-color: #06b6d4; color: white; }
+.legend-item .icon-legend-symbol { width: 1.5rem; text-align: center; margin-right: 0.5rem; }
+.legend-item .color-legend-swatch { width: 1rem; height: 1rem; border-radius: 0.25rem; margin-right: 0.5rem; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0; }
+.summary-table { border-collapse: separate; border-spacing: 0; }
+.summary-table th, .summary-table td { padding: 0.75rem; }
+.summary-table th { background-color: #1f2937; }
+.summary-table td { background-color: #252836; }
+.summary-table tr:first-child th:first-child { border-top-left-radius: 0.5rem; }
+.summary-table tr:first-child th:last-child { border-top-right-radius: 0.5rem; }
+.summary-table tr:last-child td:first-child { border-bottom-left-radius: 0.5rem; }
+.summary-table tr:last-child td:last-child { border-bottom-right-radius: 0.5rem; }
+.summary-value-positive { color: #f87171; }
+.summary-value-negative { color: #4ade80; }
+/* 【修正】新增 class 用於提升整個篩選器區塊的顯示層級 */
+.z-elevate-filters { 
+  position: relative;
+  z-index: 30; /* 確保高於結果區塊 */
+}
+</style>
 </head>
-<body>
-    <div class="app-container">
-        <!-- 左側邊欄 -->
-        <div class="sidebar">
-            <div class="sidebar-content">
-                <!-- 標題 -->
-                <div class="header">
-                    <div class="brand-logo">E</div>
-                    <h1 class="app-title">Elite Property</h1>
-                    <p class="app-subtitle">高級房地產投資分析平台<br>精準洞察市場趨勢與建築價值</p>
-                </div>
+<body class="p-4 md:p-8">
 
-                <!-- 地點搜尋卡片 -->
-                <div class="control-card">
-                    <div class="card-title">地點搜尋</div>
-                    <div class="input-group">
-                        <label class="input-label">搜尋地址或地標</label>
-                        <input type="text" class="input-field" id="searchInput" placeholder="例：台北101、信義區...">
-                    </div>
-                    <button class="btn btn-primary" onclick="searchLocation()">定位搜尋</button>
-                    <button class="btn btn-secondary" onclick="getCurrentLocation()">目前位置</button>
-                    <button class="btn btn-success" onclick="loadBuildingsWithHeight()">載入建築分析</button>
-                </div>
+<div class="max-w-screen-2xl mx-auto">
+  <header class="mb-8 text-center">
+    <h1 class="text-4xl font-extrabold text-white tracking-tight">不動產數據查詢平台</h1>
+    <p class="mt-2 text-lg text-gray-400">您的專屬數據查詢與分析工具。</p>
+  </header>
 
-                <!-- NEW: 地圖樣式編輯器 -->
-                <div class="control-card">
-                    <div class="card-title">地圖樣式編輯器</div>
-                    <div class="input-group">
-                        <label class="input-label">貼上地圖樣式 JSON</label>
-                        <textarea id="mapStyleEditor"></textarea>
-                    </div>
-                    <button class="btn btn-primary" onclick="applyMapStyle()">套用地圖樣式</button>
+  <main>
+    <div id="filter-card" class="glass-card p-6 rounded-xl shadow-lg mb-8">
+      <div id="filter-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4 items-end">
+        <div>
+            <label for="county" class="block text-sm font-medium text-gray-300">縣市</label>
+            <select id="county" class="form-select mt-1 block w-full pl-3 pr-10 py-2 text-base rounded-md">
+                <option value="">請選擇縣市</option>
+            </select>
+        </div>
+        
+        <div id="district-filter-wrapper">
+            <div class="flex justify-between items-center">
+                <label for="district-input-area" class="block text-sm font-medium text-gray-300">行政區 (可複選)</label>
+                <button id="clear-districts-btn" class="text-xs text-cyan-400 hover:text-cyan-300 hidden transition-opacity">清除選取</button>
+            </div>
+            <div class="relative mt-1">
+                <div id="district-container" class="form-multiselect flex flex-nowrap items-center gap-2 p-1 min-h-[42px] rounded-md overflow-x-auto disabled">
+                    <div id="district-input-area" class="text-gray-400/80 flex-grow py-1 px-2 cursor-pointer">請先選縣市...</div>
                 </div>
-                
-                <!-- 營運中捷運路網卡片 -->
-                <div class="control-card">
-                    <div class="card-title">捷運路網 (營運中)</div>
-                     <div class="checkbox-grid">
-                        <div class="checkbox-item">
-                            <input type="checkbox" id="show-all-metro" checked onchange="toggleAllMetro()">
-                            <label for="show-all-metro">全選/全不選</label>
-                        </div>
-                    </div>
-                    <div class="checkbox-grid">
-                        <div class="checkbox-item"><input type="checkbox" id="show-taipei-metro" checked onchange="redrawAllVisibleMetro()"><label for="show-taipei-metro">台北捷運</label></div>
-                        <div class="checkbox-item"><input type="checkbox" id="show-kaohsiung-metro" checked onchange="redrawAllVisibleMetro()"><label for="show-kaohsiung-metro">高雄捷運</label></div>
-                        <div class="checkbox-item"><input type="checkbox" id="show-taoyuan-metro" checked onchange="redrawAllVisibleMetro()"><label for="show-taoyuan-metro">桃園捷運</label></div>
-                        <div class="checkbox-item"><input type="checkbox" id="show-new_taipei-metro" checked onchange="redrawAllVisibleMetro()"><label for="show-new_taipei-metro">新北捷運</label></div>
-                    </div>
-                    <br>
-                    <button class="btn btn-primary" onclick="focusOnMetroArea()">捷運路網總覽</button>
-                    <button class="btn btn-secondary" onclick="findNearestMetro()">最近捷運站</button>
-                </div>
-
-                <!-- 未來捷運路網卡片 -->
-                 <div class="control-card">
-                    <div class="card-title">捷運路網 (興建中/規劃中)</div>
-                    <div class="checkbox-grid">
-                        <div class="checkbox-item">
-                            <input type="checkbox" id="show-future-metro" onchange="redrawAllVisibleMetro()">
-                            <label for="show-future-metro">顯示未來路網</label>
-                        </div>
-                    </div>
-                    <div style="margin-top: 15px; margin-bottom: 15px; text-align: center; color: rgba(255,255,255,0.7); font-size: 12px;">
-                        <div>或上傳 KML 檔案自訂未來路網</div>
-                        <input type="file" id="kml-upload" accept=".kml,.xml,.txt" style="display: none;">
-                        <button class="btn btn-secondary" style="width: 100%; margin-top: 8px;" onclick="document.getElementById('kml-upload').click()">選擇 KML 檔案</button>
-                        <div id="kml-status" style="font-size: 11px; margin-top: 5px; color: #64748b;"></div>
-                    </div>
-                </div>
-
-                <!-- 智能篩選卡片 -->
-                <div class="control-card">
-                    <div class="card-title">智能篩選</div>
-                    <div class="input-group">
-                        <label class="input-label">樓層範圍</label>
-                        <div class="filter-grid">
-                            <input type="number" class="filter-input" id="minHeight" placeholder="最低樓層" min="1" max="200">
-                            <input type="number" class="filter-input" id="maxHeight" placeholder="最高樓層" min="1" max="200">
-                        </div>
-                    </div>
-                    <div class="input-group">
-                        <label class="input-label">建築類型</label>
-                        <div class="checkbox-grid">
-                            <div class="checkbox-item"><input type="checkbox" id="filter-residential" checked><label for="filter-residential">住宅</label></div>
-                            <div class="checkbox-item"><input type="checkbox" id="filter-commercial" checked><label for="filter-commercial">商業</label></div>
-                            <div class="checkbox-item"><input type="checkbox" id="filter-industrial" checked><label for="filter-industrial">工業</label></div>
-                            <div class="checkbox-item"><input type="checkbox" id="filter-public" checked><label for="filter-public">公共</label></div>
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="filterByHeight()">套用篩選</button>
-                    <button class="btn btn-secondary" onclick="clearFilters()">重置篩選</button>
-                </div>
-
-                <!-- 統計資料面板 -->
-                <div class="stats-panel" id="statsPanel">
-                    <div class="stat-item"><div class="stat-number" id="totalBuildings">0</div><div class="stat-label">建築總數</div></div>
-                    <div class="stat-item"><div class="stat-number" id="avgHeight">0</div><div class="stat-label">平均樓層</div></div>
-                    <div class="stat-item"><div class="stat-number" id="maxFloors">0</div><div class="stat-label">最高樓層</div></div>
-                    <div class="stat-item"><div class="stat-number" id="highRise">0</div><div class="stat-label">高樓建築</div></div>
-                </div>
-
-                <!-- 圖例卡片 -->
-                <div class="legend">
-                    <div class="legend-title">建築高度圖例</div>
-                    <div class="legend-item"><div class="legend-color" style="background: linear-gradient(135deg, #10b981, #059669);"></div><span class="legend-text">1-3層 低樓層建築</span></div>
-                    <div class="legend-item"><div class="legend-color" style="background: linear-gradient(135deg, #f59e0b, #d97706);"></div><span class="legend-text">4-8層 中樓層建築</span></div>
-                    <div class="legend-item"><div class="legend-color" style="background: linear-gradient(135deg, #ef4444, #dc2626);"></div><span class="legend-text">9-15層 高樓層建築</span></div>
-                    <div class="legend-item"><div class="legend-color" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);"></div><span class="legend-text">16層+ 超高層建築</span></div>
-                    <div class="legend-item"><div class="legend-color" style="background: linear-gradient(135deg, #64748b, #475569);"></div><span class="legend-text">未知高度</span></div>
-                </div>
-
-                <!-- 建築詳細資訊面板 -->
-                <div class="info-panel" id="buildingInfo">
-                    <div class="info-title">建築詳細資訊</div>
-                    <div id="buildingDetails"></div>
-                    <button class="btn btn-primary" onclick="addHeightInfo()" style="margin-top: 16px;">補充建築資訊</button>
-                </div>
+                <div id="district-suggestions" class="absolute z-50 w-full mt-1 bg-dark-card border border-gray-600 rounded-md shadow-lg hidden suggestions-container"></div>
             </div>
         </div>
 
-        <!-- 右側地圖容器 -->
-        <div class="map-container">
-            <div class="status-bar"><div class="status" id="status"></div></div>
-            <div id="map"></div>
+        <div>
+            <label for="type" class="block text-sm font-medium text-gray-300">交易類型</label>
+            <select id="type" class="form-select mt-1 block w-full pl-3 pr-10 py-2 text-base rounded-md">
+                <option value="預售交易" selected>預售交易</option>
+                <option value="中古交易" disabled>中古交易 (開發中)</option>
+                <option value="租賃交易" disabled>租賃交易 (開發中)</option>
+            </select>
+        </div>
+        <div><label for="building-type" class="block text-sm font-medium text-gray-300">建物型態</label><select id="building-type" class="form-select mt-1 block w-full pl-3 pr-10 py-2 text-base rounded-md"><option value="">全部</option><option value="住宅大樓(11層含以上有電梯)">住宅大樓</option><option value="華廈(10層含以下有電梯)">華廈</option><option value="公寓(5層含以下無電梯)">公寓</option><option value="套房(1房(1廳)1衛)">套房</option><option value="透天厝">透天厝</option><option value="店面(店鋪)">店面</option><option value="辦公商業大樓">辦公商業大樓</option><option value="工廠">工廠</option><option value="倉庫">倉庫</option><option value="其他">其他</option></select></div>
+        
+        <div id="project-filter-wrapper" class="xl:col-span-3">
+            <div class="flex justify-between items-center">
+                <label for="project-name-input" class="block text-sm font-medium text-gray-300">建案名稱 (可複選)</label>
+                <button id="clear-projects-btn" class="text-xs text-cyan-400 hover:text-cyan-300 hidden transition-opacity">清除選取</button>
+            </div>
+            <div class="relative mt-1">
+                <div id="project-name-container" class="form-multiselect flex flex-nowrap items-center gap-2 p-1 min-h-[42px] rounded-md overflow-x-auto">
+                    <input type="text" id="project-name-input" placeholder="請先選縣市..." class="bg-transparent flex-grow outline-none text-base py-1 px-2" disabled autocomplete="off">
+                </div>
+                <div id="project-name-suggestions" class="absolute z-40 w-full mt-1 bg-dark-card border border-gray-600 rounded-md shadow-lg hidden suggestions-container"></div>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 xl:col-span-4 sm:col-span-2">
+            <div>
+                <label for="date-range" class="block text-sm font-medium text-gray-300">快捷時間</label>
+                <select id="date-range" class="form-select mt-1 block w-full pl-3 pr-10 py-2 text-base rounded-md">
+                    <option value="custom">自訂範圍</option>
+                    <option value="1q">近一季 (3個月)</option>
+                    <option value="2q">近兩季 (6個月)</option>
+                    <option value="3q">近三季 (9個月)</option>
+                    <option value="1y">近一年 (12個月)</option>
+                    <option value="this_year">今年以來</option>
+                    <option value="last_2_years">去年＋今年</option>
+                    <option value="last_3_years">前年＋去年＋今年</option>
+                </select>
+            </div>
+            <div><label for="date-start" class="block text-sm font-medium text-gray-300">起始日期</label><input type="date" id="date-start" class="form-input mt-1 block w-full pl-3 pr-2 py-2 text-base rounded-md"></div>
+            <div><label for="date-end" class="block text-sm font-medium text-gray-300">結束日期</label><input type="date" id="date-end" class="form-input mt-1 block w-full pl-3 pr-2 py-2 text-base rounded-md"></div>
+        </div>
+
+        <div class="xl:col-span-3 sm:col-span-2 flex items-end gap-4">
+           <div class="flex items-center gap-4 flex-grow justify-end">
+             <button id="analyze-btn" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed">分析報表</button>
+                <button id="search-btn" class="bg-gradient-to-r from-cyan-accent to-purple-accent text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:opacity-90 transition-all">查詢資料列表</button>
+            </div>
+        </div>
+      </div>
+    </div>
+  
+    <div id="results-container" class="glass-card p-6 rounded-xl shadow-lg">
+      <div id="tabs-container" class="border-b border-gray-700 mb-6 hidden">
+            <nav class="flex flex-wrap -mb-px">
+                <button data-tab="ranking-report" class="tab-button active">核心指標與排名</button>
+                <button data-tab="price-band-report" class="tab-button">總價帶分析</button>
+                <button data-tab="unit-price-report" class="tab-button">房屋單價分析</button>
+                <button data-tab="parking-report" class="tab-button">車位單價分析</button>
+                 <button data-tab="velocity-report" class="tab-button">去化時間分析</button>
+                <button data-tab="price-grid-report" class="tab-button">垂直水平分析</button>
+                <button data-tab="data-list" class="tab-button">資料列表</button>
+            </nav>
+        </div>
+        <div id="message-area" class="text-center p-8 text-gray-400">請設定篩選條件後點擊查詢或分析。</div>
+        <div id="ranking-report-content" class="tab-content">
+           <div id="metric-cards-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8"></div>
+            <div class="overflow-x-auto">
+                <table id="ranking-table" class="min-w-full divide-y divide-gray-800"></table>
+            </div>
+        </div>
+        <div id="price-band-report-content" class="tab-content">
+             <div class="overflow-x-auto">
+                 <table id="price-band-table" class="min-w-full divide-y divide-gray-800"></table>
+            </div>
+        </div>
+        <div id="unit-price-report-content" class="tab-content">
+            <div class="flex justify-end items-center mb-4">
+                <label class="text-sm font-medium text-gray-400 mr-3">平均數類型:</label>
+                <div id="avg-type-toggle" class="inline-flex bg-dark-card p-1 rounded-lg">
+                    <button data-type="arithmetic" class="avg-type-btn active px-4 py-1 text-sm font-semibold rounded-md transition-colors">算術平均數</button>
+                    <button data-type="weighted" class="avg-type-btn px-4 py-1 text-sm font-semibold rounded-md transition-colors">加權平均數</button>
+                </div>
+            </div>
+            <div class="mb-8">
+                  <h3 class="report-section-title">住宅單價統計 (住宅大樓/華廈)</h3>
+                <div id="residential-stats-table-container"></div>
+                <div id="residential-stats-extra-info" class="text-sm text-gray-400 mt-4 space-y-1"></div>
+             </div>
+            <div>
+                <h3 class="report-section-title">建案類型比較 (店舖/事務所 vs. 住宅)</h3>
+                  <div id="type-comparison-table-container" class="overflow-x-auto"></div>
+            </div>
+            <div id="average-type-explanation" class="mt-8 p-4 bg-dark-card border border-gray-700 rounded-lg text-sm text-gray-400 space-y-3">
+                 <h4 class="font-bold text-gray-200">名詞解釋</h4>
+                <p><strong class="text-cyan-400">算術平均數 (Arithmetic Mean):</strong> 將每一筆交易的單價直接相加後，除以總筆數。它能反映「一筆典型交易」的單價，不受房屋坪數大小影響，適合了解普遍行情。</p>
+                <p><strong class="text-purple-400">加權平均數 (Weighted Average):</strong> 以「總房屋總價 ÷ 總房屋面積」計算。坪數越大的交易，對平均價格的影響力就越大。它更能反映市場的「整體價值」與資金結構。</p>
+            </div>
+        </div>
+        <div id="parking-report-content" class="tab-content">
+            <div class="mb-8">
+                 <h3 class="report-section-title">房車配比</h3>
+                <div id="parking-ratio-table-container" class="overflow-x-auto"></div>
+            </div>
+            <div class="mb-8">
+                <h3 class="report-section-title">各類型車位平均單價</h3>
+                <div id="avg-price-by-type-table-container" class="overflow-x-auto"></div>
+             </div>
+            <div>
+                <h3 class="report-section-title">坡道平面車位分層價格</h3>
+                 <div id="ramp-plane-price-by-floor-table-container"></div>
+                <p class="text-sm text-gray-500 mt-2">* 此數據僅統計主表中「車位類別」為「坡道平面」的交易，並根據其附表中的車位資料進行彙總。</p>
+             </div>
+        </div>
+        <div id="velocity-report-content" class="tab-content">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">房型篩選器</label>
+              <div id="velocity-room-filter-container" class="flex flex-wrap gap-2"></div>
+            </div>
+             <div id="velocity-sub-tabs-container">
+                <nav class="sub-tab-nav">
+                    <button data-view="weekly" class="sub-tab-btn">每週去化</button>
+                    <button data-view="monthly" class="sub-tab-btn active">每月去化</button>
+                    <button data-view="quarterly" class="sub-tab-btn">每季去化</button>
+                    <button data-view="yearly" class="sub-tab-btn">年度去化</button>
+                </nav>
+            </div>
+            <div id="velocity-table-container" class="overflow-x-auto"></div>
+        </div>
+        <div id="price-grid-report-content" class="tab-content">
+             <div class="my-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">建案篩選器</label>
+                <div id="price-grid-project-filter-container" class="flex flex-nowrap gap-2 overflow-x-auto py-2 scrollable-filter-container"></div>
+            </div>
+            
+            <div class="my-4 p-4 bg-dark-card border border-gray-700 rounded-lg flex items-center justify-between flex-wrap gap-4">
+                 <div>
+                    <h4 class="font-bold text-gray-200">進階分析：建案調價熱力圖</h4>
+                    <p class="text-sm text-gray-400 mt-1">
+                    啟用此功能可分析建案的調價軌跡。顏色越深，代表該戶成交價相比開盤時的漲幅越大。
+                   </p>
+                </div>
+                <div class="flex items-end gap-4">
+                    <div>
+                        <label for="floor-premium-input" class="block text-xs font-medium text-gray-300 mb-1">
+                             錨定樓層價差
+                            <span class="has-tooltip text-gray-500" data-tooltip="輸入每高一層樓，房屋每坪單價增加的萬數。例如：0.3">
+                                <i class="fas fa-info-circle"></i>
+                            </span>
+                        </label>
+                        <input type="number" id="floor-premium-input" class="form-input w-28 pl-3 pr-2 py-2 text-base rounded-md" value="0.3" step="0.05" min="0">
+                    </div>
+            
+                    <button id="back-to-grid-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all hidden"><i class="fas fa-table mr-2"></i>返回銷控表</button>
+                    <button id="analyze-heatmap-btn" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"><i class="fas fa-fire mr-2"></i>開始分析</button>
+                </div>
+            </div>
+
+            <div id="heatmap-info-container" class="hidden my-4 space-y-4">
+                <div class="p-4 bg-dark-card border border-gray-700 rounded-lg text-sm text-gray-400 space-y-3">
+                    <h4 class="font-bold text-gray-200">名詞解釋</h4>
+                     <p><strong class="text-cyan-400">樓層調整:</strong> <code>(成交樓層 - 基準樓層) * 樓層價差</code>。此數值模擬了因樓層不同而產生的理論價差。</p>
+                    <p><strong class="text-purple-400">時間溢價 (%):</strong> <code>(成交單價 - 基準單價 - 樓層調整) / (基準單價 + 樓層調整)</code>。此數值反映了相較於「開盤基準」，該戶在特定時間點成交時的價格漲跌幅。正值代表漲價，負值代表跌價。背景顏色深淺即代表此數值。</p>
+                </div>
+                <div id="heatmap-legend-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div class="p-4 bg-dark-card border border-gray-700 rounded-lg">
+                        <h4 class="font-bold text-gray-200 mb-2">溢價圖例 (點擊可篩選)</h4>
+                         <div id="heatmap-color-legend" class="flex flex-wrap gap-x-4 gap-y-2 text-sm"></div>
+                    </div>
+                     <div class="p-4 bg-dark-card border border-gray-700 rounded-lg">
+                        <h4 class="font-bold text-gray-200 mb-2">特殊交易圖例 (點擊可篩選)</h4>
+                         <div id="heatmap-icon-legend" class="flex flex-wrap gap-x-4 gap-y-2 text-sm"></div>
+                     </div>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="report-section-title">銷控表</h3>
+                <div id="unit-color-legend-container" class="flex flex-wrap gap-x-4 gap-y-2 my-4 text-sm"></div>
+                 <div id="horizontal-price-grid-container" class="w-full overflow-x-auto"></div>
+                <div id="heatmap-summary-table-container" class="mt-8 hidden"></div>
+                <div id="heatmap-horizontal-comparison-table-container" class="mt-8 hidden"></div>
+            </div>
+        </div>
+        <div id="data-list-content" class="tab-content">
+             <div id="table-container" class="table-container overflow-x-auto">
+                <table id="results-table" class="min-w-full divide-y divide-gray-800"></table>
+            </div>
+            <div id="pagination-controls" class="flex justify-between items-center mt-4 text-sm text-gray-400"></div>
         </div>
     </div>
+  </main>
+</div>
 
-    <!-- 全螢幕載入中動畫 -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-content">
-            <div class="spinner"></div>
-            <div class="loading-text" id="loadingText">正在分析建築數據...</div>
+<div id="details-modal" class="modal-overlay hidden">
+     <div class="modal-container">
+        <div class="flex justify-between items-center mb-6">
+             <h2 id="modal-title" class="text-2xl font-bold text-white">附表詳細資料</h2>
+            <button id="modal-close-btn" class="text-gray-400 hover:text-white text-3xl font-bold">&times;</button>
         </div>
+        <div id="modal-content" class="text-gray-300"></div>
     </div>
+</div>
 
-    <!-- 引用 Leaflet.js 的 JavaScript 函式庫 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-    <!-- NEW: 引用 Google Maps API 和 Leaflet-GoogleMutant 插件 -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=&v=3.55"></script>
-    <script src="https://cdn.jsdelivr.net/npm/leaflet.gridlayer.googlemutant@0.14.0/dist/Leaflet.GoogleMutant.js"></script>
+<script type="module">
+// API Endpoints
+const EDGE_FUNCTION_ENDPOINT = 'https://zxbmbbfrzbtuueysicoc.supabase.co/functions/v1/query-data';
+const SUB_DATA_ENDPOINT = 'https://zxbmbbfrzbtuueysicoc.supabase.co/functions/v1/query-sub-data';
+const PROJECT_NAMES_ENDPOINT = 'https://zxbmbbfrzbtuueysicoc.supabase.co/functions/v1/query-names';
+const RANKING_ANALYSIS_ENDPOINT = 'https://zxbmbbfrzbtuueysicoc.supabase.co/functions/v1/analyze-project-ranking';
+
+// DOM Elements
+const dom = {
+  countySelect: document.getElementById('county'),
+  filterCard: document.getElementById('filter-card'),
+  districtFilterWrapper: document.getElementById('district-filter-wrapper'),
+  districtContainer: document.getElementById('district-container'),
+  districtInputArea: document.getElementById('district-input-area'),
+  districtSuggestions: document.getElementById('district-suggestions'),
+  clearDistrictsBtn: document.getElementById('clear-districts-btn'),
+  projectFilterWrapper: document.getElementById('project-filter-wrapper'),
+  typeSelect: document.getElementById('type'),
+  buildingTypeSelect: document.getElementById('building-type'),
+  dateRangeSelect: document.getElementById('date-range'),
+  dateStartInput: document.getElementById('date-start'),
+  dateEndInput: document.getElementById('date-end'),
+  searchBtn: document.getElementById('search-btn'),
+  analyzeBtn: document.getElementById('analyze-btn'),
+  messageArea: document.getElementById('message-area'),
+  tabsContainer: document.getElementById('tabs-container'),
+  rankingReportContent: document.getElementById('ranking-report-content'),
+  metricCardsContainer: document.getElementById('metric-cards-container'),
+  rankingTable: document.getElementById('ranking-table'),
+  priceBandReportContent: document.getElementById('price-band-report-content'),
+  priceBandTable: document.getElementById('price-band-table'),
+  unitPriceReportContent: document.getElementById('unit-price-report-content'),
+  residentialStatsTableContainer: document.getElementById('residential-stats-table-container'),
+  residentialStatsExtraInfo: document.getElementById('residential-stats-extra-info'),
+  typeComparisonTableContainer: document.getElementById('type-comparison-table-container'),
+  parkingReportContent: document.getElementById('parking-report-content'),
+  parkingRatioTableContainer: document.getElementById('parking-ratio-table-container'),
+  avgPriceByTypeTableContainer: document.getElementById('avg-price-by-type-table-container'),
+  rampPlanePriceByFloorTableContainer: document.getElementById('ramp-plane-price-by-floor-table-container'),
+  velocityReportContent: document.getElementById('velocity-report-content'),
+  velocityRoomFilterContainer: document.getElementById('velocity-room-filter-container'),
+  velocitySubTabsContainer: document.getElementById('velocity-sub-tabs-container'),
+  velocityTableContainer: document.getElementById('velocity-table-container'),
+  priceGridReportContent: document.getElementById('price-grid-report-content'),
+  unitColorLegendContainer: document.getElementById('unit-color-legend-container'),
+  horizontalPriceGridContainer: document.getElementById('horizontal-price-grid-container'),
+  priceGridProjectFilterContainer: document.getElementById('price-grid-project-filter-container'),
+  dataListContent: document.getElementById('data-list-content'),
+  resultsTable: document.getElementById('results-table'),
+  paginationControls: document.getElementById('pagination-controls'),
+  modal: document.getElementById('details-modal'),
+  modalTitle: document.getElementById('modal-title'),
+  modalContent: document.getElementById('modal-content'),
+  modalCloseBtn: document.getElementById('modal-close-btn'),
+  projectNameContainer: document.getElementById('project-name-container'),
+  projectNameInput: document.getElementById('project-name-input'),
+  projectNameSuggestions: document.getElementById('project-name-suggestions'),
+  clearProjectsBtn: document.getElementById('clear-projects-btn'),
+  avgTypeToggle: document.getElementById('avg-type-toggle'),
+  analyzeHeatmapBtn: document.getElementById('analyze-heatmap-btn'),
+  backToGridBtn: document.getElementById('back-to-grid-btn'),
+  floorPremiumInput: document.getElementById('floor-premium-input'),
+  heatmapInfoContainer: document.getElementById('heatmap-info-container'),
+  heatmapLegendContainer: document.getElementById('heatmap-legend-container'),
+  heatmapColorLegend: document.getElementById('heatmap-color-legend'),
+  heatmapIconLegend: document.getElementById('heatmap-icon-legend'),
+  heatmapSummaryTableContainer: document.getElementById('heatmap-summary-table-container'),
+  heatmapHorizontalComparisonTableContainer: document.getElementById('heatmap-horizontal-comparison-table-container'),
+};
+
+// State variables
+let currentPage = 1, pageSize = 30, totalRecords = 0;
+let selectedDistricts = [], selectedProjects = [], suggestionDebounceTimer;
+let analysisDataCache = null;
+let currentSort = { key: 'saleAmountSum', order: 'desc' };
+let currentAverageType = 'arithmetic';
+let currentVelocityView = 'monthly';
+let selectedVelocityRooms = [];
+let selectedPriceGridProject = null;
+let isHeatmapActive = false;
+let currentLegendFilter = { type: null, value: null };
+
+// Data
+const districtData = {"臺北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],"新北市":["板橋區","三重區","中和區","永和區","新莊區","新店區","樹林區","鶯歌區","三峽區","淡水區","汐止區","瑞芳區","土城區","蘆洲區","五股區","泰山區","林口區","深坑區","石碇區","坪林區","三芝區","石門區","八里區","平溪區","雙溪區","貢寮區","金山區","萬里區","烏來區"],"桃園市":["桃園區","中壢區","大溪區","楊梅區","蘆竹區","大園區","龜山區","八德區","龍潭區","平鎮區","新屋區","觀音區","復興區"],"臺中市":["中區","東區","南區","西區","北區","北屯區","西屯區","南屯區","太平區","大里區","霧峰區","烏日區","豐原區","后里區","石岡區","東勢區","和平區","新社區","潭子區","大雅區","神岡區","大肚區","沙鹿區","龍井區","梧棲區","清水區","大甲區","外埔區","大安區"],"臺南市":["中西區","東區","南區","北區","安平區","安南區","永康區","歸仁區","新化區","左鎮區","玉井區","楠西區","南化區","仁德區","關廟區","龍崎區","官田區","麻豆區","佳里區","西港區","七股區","將軍區","學甲區","北門區","新營區","後壁區","白河區","東山區","六甲區","下營區","柳營區","鹽水區","善化區","大內區","山上區","新市區","安定區"],"高雄市":["新興區","前金區","苓雅區","鹽埕區","鼓山區","旗津區","前鎮區","三民區","楠梓區","小港區","左營區","仁武區","大社區","岡山區","路竹區","阿蓮區","田寮區","燕巢區","橋頭區","梓官區","彌陀區","永安區","湖內區","鳳山區","大寮區","林園區","鳥松區","大樹區","旗山區","美濃區","六龜區","內門區","杉林區","甲仙區","桃源區","那瑪夏區","茂林區","茄萣區"],"基隆市":["仁愛區","信義區","中正區","中山區","安樂區","暖暖區","七堵區"],"新竹市":["東區","北區","香山區"],"嘉義市":["東區","西區"],"宜蘭縣":["宜蘭市","羅東鎮","蘇澳鎮","頭城鎮","礁溪鄉","壯圍鄉","員山鄉","冬山鄉","五結鄉","三星鄉","大同鄉","南澳鄉"],"新竹縣":["竹北市","竹東鎮","新埔鎮","關西鎮","湖口鄉","新豐鄉","芎林鄉","橫山鄉","北埔鄉","寶山鄉","峨眉鄉","尖石鄉","五峰鄉"],"苗栗縣":["苗栗市","苑裡鎮","通霄鎮","竹南鎮","頭份鎮","後龍鎮","卓蘭鎮","大湖鄉","公館鄉","銅鑼鄉","南庄鄉","頭屋鄉","三義鄉","西湖鄉","造橋鄉","三灣鄉","獅潭鄉","泰安鄉"],"彰化縣":["彰化市","鹿港鎮","和美鎮","線西鄉","伸港鄉","福興鄉","秀水鄉","花壇鄉","芬園鄉","員林鎮","溪湖鎮","田中鎮","大村鄉","埔鹽鄉","埔心鄉","永靖鄉","社頭鄉","二水鄉","北斗鎮","二林鎮","田尾鄉","埤頭鄉","芳苑鄉","大城鄉","竹塘鄉","溪州鄉"],"南投縣":["南投市","埔里鎮","草屯鎮","竹山鎮","集集鎮","名間鄉","鹿谷鄉","中寮鄉","魚池鄉","國姓鄉","水里鄉","信義鄉","仁愛鄉"],"雲林縣":["斗六市","斗南鎮","虎尾鎮","西螺鎮","土庫鎮","北港鎮","古坑鄉","大埤鄉","莿桐鄉","林內鄉","二崙鄉","崙背鄉","麥寮鄉","東勢鄉","褒忠鄉","台西鄉","元長鄉","四湖鄉","口湖鄉","水林鄉"],"嘉義縣":["太保市","朴子市","布袋鎮","大林鎮","民雄鄉","溪口鄉","新港鄉","六腳鄉","東石鄉","義竹鄉","鹿草鄉","水上鄉","中埔鄉","竹崎鄉","梅山鄉","番路鄉","大埔鄉","阿里山鄉"],"屏東縣":["屏東市","潮州鎮","東港鎮","恆春鎮","萬丹鄉","長治鄉","麟洛鄉","九如鄉","里港鄉","鹽埔鄉","高樹鄉","萬巒鄉","內埔鄉","竹田鄉","新埤鄉","枋寮鄉","新園鄉","崁頂鄉","林邊鄉","南州鄉","佳冬鄉","琉球鄉","車城鄉","滿州鄉","枋山鄉","霧台鄉","瑪家鄉","泰武鄉","來義鄉","春日鄉","獅子鄉","牡丹鄉","三地門鄉"],"花蓮縣":["花蓮市","鳳林鎮","玉里鎮","新城鄉","吉安鄉","壽豐鄉","光復鄉","豐濱鄉","瑞穗鄉","富里鄉","秀林鄉","萬榮鄉","卓溪鄉"],"臺東縣":["臺東市","成功鎮","關山鎮","卑南鄉","鹿野鄉","池上鄉","東河鄉","長濱鄉","太麻里鄉","大武鄉","綠島鄉","海端鄉","延平鄉","金峰鄉","達仁鄉","蘭嶼鄉"],"澎湖縣":["馬公市","湖西鄉","白沙鄉","西嶼鄉","望安鄉","七美鄉"],"金門縣":["金城鎮","金湖鎮","金沙鎮","金寧鄉","烈嶼鄉","烏坵鄉"],"連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]};
+const countyCodeMap = { "臺北市": "A", "新北市": "F", "桃園市": "H", "臺中市": "B", "臺南市": "D", "高雄市": "E", "基隆市": "C", "新竹市": "O", "嘉義市": "I", "新竹縣": "J", "苗栗縣": "K", "彰化縣": "N", "南投縣": "M", "雲林縣": "P", "嘉義縣": "Q", "屏東縣": "T", "宜蘭縣": "G", "花蓮縣": "U", "臺東縣": "V", "澎湖縣": "X", "金門縣": "W", "連江縣": "Z" };
+
+// --- Heatmap related functions ---
+const heatmapColorMapping = { high: { label: '高度溢價 (> 5%)', color: 'rgba(244, 63, 94, 0.5)' }, medium: { label: '中度溢價 (2-5%)', color: 'rgba(234, 179, 8, 0.4)' }, low: { label: '微幅溢價 (0-2%)', color: 'rgba(34, 197, 94, 0.3)' }, discount: { label: '建案折價 (< 0%)', color: 'rgba(139, 92, 246, 0.4)' }, };
+const specialTypeMapping = { storefront: { label: '店舖類型', icon: '<i class="fas fa-store"></i>' }, anchor: { label: '基準戶', icon: '<i class="fas fa-anchor"></i>' }, terrace: { label: '露台戶', icon: '<i class="fas fa-seedling"></i>' }, insider: { label: '親友/員工', icon: '<i class="fas fa-users"></i>' }, };
+function getPremiumCategory(premium) { if (premium === null) return 'none'; if (premium < 0) return 'discount'; if (premium === 0) return 'anchor'; if (premium > 5) return 'high'; if (premium > 2) return 'medium'; return 'low'; }
+function getHeatmapColor(premium) { if (premium === null) return '#1f2937'; const category = getPremiumCategory(premium); return heatmapColorMapping[category] ? heatmapColorMapping[category].color : 'rgba(34, 197, 94, 0.2)'; }
+function renderHeatmapLegends() { dom.heatmapColorLegend.innerHTML = Object.entries(heatmapColorMapping).map(([key, {label, color}]) => ` <div class="legend-item" data-filter-type="premium" data-filter-value="${key}"> <span class="color-legend-swatch" style="background-color: ${color};"></span> <span>${label}</span> </div> `).join(''); dom.heatmapIconLegend.innerHTML = Object.entries(specialTypeMapping).map(([key, {label, icon}]) => ` <div class="legend-item" data-filter-type="special" data-filter-value="${key}"> <span class="icon-legend-symbol">${icon}</span> <span>${label}</span> </div> `).join(''); }
+function handleLegendClick(e) { const legendItem = e.target.closest('.legend-item'); if (!legendItem) return; const { filterType, filterValue } = legendItem.dataset; if (legendItem.classList.contains('active')) { legendItem.classList.remove('active'); currentLegendFilter = { type: null, value: null }; } else { dom.heatmapLegendContainer.querySelectorAll('.legend-item.active').forEach(item => item.classList.remove('active')); legendItem.classList.add('active'); currentLegendFilter = { type: filterType, value: filterValue }; } applyHeatmapGridFilter(); }
+function applyHeatmapGridFilter() { const { type, value } = currentLegendFilter; const allCells = dom.horizontalPriceGridContainer.querySelectorAll('.heatmap-cell'); if (!type || !value) { allCells.forEach(cell => cell.classList.remove('dimmed')); return; } allCells.forEach(cell => { const cellValue = cell.dataset[type === 'premium' ? 'premiumCategory' : 'specialType']; if (cellValue === value) { cell.classList.remove('dimmed'); } else { cell.classList.add('dimmed'); } }); }
+function renderPriceGapHeatmap() { const container = dom.horizontalPriceGridContainer; const projectAnalysisData = analysisDataCache.priceGridAnalysis.byProject[selectedPriceGridProject]; if (!projectAnalysisData) { container.innerHTML = '<p class="text-gray-500 p-4 text-center">找不到此建案的熱力圖分析資料。</p>'; return; } renderHeatmapLegends(); currentLegendFilter = { type: null, value: null }; const { horizontalGrid, sortedFloors, sortedUnits, unitColorMap, summary } = projectAnalysisData; let tableHtml = '<table class="min-w-full divide-y divide-gray-800 border-collapse">'; let headerHtml = '<thead><tr><th class="sticky left-0 bg-dark-card z-10 p-2">樓層 \\ 戶別</th>'; sortedUnits.forEach(unit => { headerHtml += `<th class="text-center p-2" style="background-color:${unitColorMap[unit] || '#4b5563'}80;">${unit}</th>`; }); headerHtml += '</tr></thead>'; let bodyHtml = '<tbody>'; sortedFloors.forEach(floor => { bodyHtml += `<tr class="hover:bg-gray-800/50"><td class="font-bold sticky left-0 bg-dark-card z-10 p-2">${floor}</td>`; sortedUnits.forEach(unit => { const cellDataArray = horizontalGrid[floor] ? horizontalGrid[floor][unit] : null; if (cellDataArray && cellDataArray.length > 0) { const cellContent = cellDataArray.map(tx => { const { premium, isStorefront, remark } = tx; const remarkText = remark || ''; let specialType = 'none'; let iconHtml = ''; const premiumCategory = getPremiumCategory(premium); let bgColor = getHeatmapColor(premium); if (isStorefront) { specialType = 'storefront'; iconHtml = `<span class="has-tooltip" data-tooltip="${specialTypeMapping[specialType].label}">${specialTypeMapping[specialType].icon}</span> `; bgColor = '#1f2937'; } else if (premium === 0) { specialType = 'anchor'; iconHtml = `<span class="has-tooltip" data-tooltip="${specialTypeMapping[specialType].label}">${specialTypeMapping[specialType].icon}</span> `; } else if (remarkText.includes('露台')) { specialType = 'terrace'; iconHtml = `<span class="has-tooltip" data-tooltip="${specialTypeMapping[specialType].label}: ${remarkText}">${specialTypeMapping[specialType].icon}</span> `; } else if (remarkText.includes('親友') || remarkText.includes('員工')) { specialType = 'insider'; iconHtml = `<span class="has-tooltip" data-tooltip="${specialTypeMapping[specialType].label}: ${remarkText}">${specialTypeMapping[specialType].icon}</span> `; } return `<div class="has-tooltip py-1 heatmap-cell" data-tooltip="${tx.tooltip}" data-premium-category="${premiumCategory}" data-special-type="${specialType}" style="border-radius: 4px; margin-bottom: 4px; padding: 2px 4px; background-color: ${bgColor}; border: ${specialType === 'anchor' ? '1px solid #06b6d4' : 'none'};"> <span class="font-semibold">${iconHtml}${tx.unitPrice.toFixed(1)}萬</span><br><span class="text-xs text-gray-400">(${tx.transactionDate})</span> </div>`; }).join(''); bodyHtml += `<td style="vertical-align: top; padding: 4px 8px; border-left: 1px solid #374151;">${cellContent}</td>`; } else { bodyHtml += `<td style="background-color: #1a1d29; border-left: 1px solid #374151;">-</td>`; } }); bodyHtml += `</tr>`; }); bodyHtml += '</tbody>'; tableHtml += headerHtml + bodyHtml + '</table>'; container.innerHTML = tableHtml; renderHeatmapSummaryTable(summary); dom.heatmapSummaryTableContainer.classList.remove('hidden'); renderHorizontalComparisonTable(projectAnalysisData); dom.heatmapHorizontalComparisonTableContainer.classList.remove('hidden'); }
+function renderHeatmapSummaryTable(summary) { if (!summary || summary.transactionCount === 0) { dom.heatmapSummaryTableContainer.innerHTML = ''; return; } const { totalBaselineHousePrice, totalPricePremiumValue, totalSoldArea } = summary; const premiumPercentage = (totalPricePremiumValue / totalBaselineHousePrice) * 100; const avgPriceAdjustment = totalPricePremiumValue / totalSoldArea; const formatValue = (value, unit = '', decimals = 2) => { const num = formatNumber(value, decimals); return value > 0 ? `<span class="summary-value-positive">+${num} ${unit}</span>` : `<span class="summary-value-negative">${num} ${unit}</span>`; }; const tableHtml = ` <h3 class="report-section-title mt-8">時間溢價統計摘要 (排除店舖)</h3> <div class="overflow-x-auto"> <table class="min-w-full summary-table"> <thead> <tr> <th>基準房屋總價</th> <th>時間溢價總額</th> <th>總溢價率</th> <th>已售房屋坪數</th> <th>平均單價調價</th> </tr> </thead> <tbody> <tr> <td>${formatNumber(totalBaselineHousePrice, 0)} 萬</td> <td>${formatValue(totalPricePremiumValue, '萬', 0)}</td> <td>${formatValue(premiumPercentage, '%')}</td> <td>${formatNumber(totalSoldArea)} 坪</td> <td>${formatValue(avgPriceAdjustment, '萬/坪')}</td> </tr> </tbody> </table> </div> `; dom.heatmapSummaryTableContainer.innerHTML = tableHtml; }
+function renderHorizontalComparisonTable(projectData) { if (!projectData || !projectData.horizontalComparison || projectData.horizontalComparison.length === 0) { dom.heatmapHorizontalComparisonTableContainer.innerHTML = ''; return; } const { horizontalComparison, refFloorForComparison } = projectData; const formatValue = (value, unit = '', decimals = 2, addSign = false) => { if (typeof value !== 'number' || isNaN(value)) return '-'; const num = formatNumber(value, decimals); if (addSign) { return value > 0 ? `<span class="summary-value-positive">+${num} ${unit}</span>` : value < 0 ? `<span class="summary-value-negative">${num} ${unit}</span>` : `<span>${num} ${unit}</span>`; } return (unit === '%') ? num + unit : num + ' ' + unit; }; const tableHtml = ` <h3 class="report-section-title mt-8">戶型水平價差與溢價貢獻 (基準樓層: F${refFloorForComparison || 'N/A'})</h3> <p class="text-sm text-gray-500 mt-2 mb-4">* 水平價差是將各戶型基準價換算至共同基準樓層後的價差，以最低價戶型為 0 基準。</p> <div class="overflow-x-auto"> <table class="min-w-full summary-table"> <thead> <tr> <th>戶型</th> <th>基準戶 (樓/價)</th> <th>水平價差(萬/坪)</th> <th>去化戶數</th> <th>時間溢價貢獻</th> <th>貢獻佔比</th> <th>基準房屋總價</th> <th>平均單價調價</th> </tr> </thead> <tbody> ${horizontalComparison.map(item => ` <tr> <td>${item.unitType}</td> <td>${item.anchorInfo}</td> <td>${formatValue(item.horizontalPriceDiff, '萬/坪', 2, true)}</td> <td>${item.unitsSold.toLocaleString()} 戶</td> <td>${formatValue(item.timePremiumContribution, '萬', 0, true)}</td> <td>${formatValue(item.contributionPercentage, '%')}</td> <td>${formatNumber(item.baselineHousePrice, 0)} 萬</td> <td>${formatValue(item.avgPriceAdjustment, '萬/坪', 2, true)}</td> </tr> `).join('')} </tbody> </table> </div> `; dom.heatmapHorizontalComparisonTableContainer.innerHTML = tableHtml; }
+
+function initialize() {
+  Object.keys(districtData).forEach(name => dom.countySelect.add(new Option(name, name)));
+  dom.searchBtn.addEventListener('click', () => { currentPage = 1; fetchData(); });
+  dom.analyzeBtn.addEventListener('click', analyzeData);
+  dom.countySelect.addEventListener('change', updateDistrictOptions);
+  dom.districtContainer.addEventListener('click', onDistrictContainerClick);
+  dom.districtSuggestions.addEventListener('click', onDistrictSuggestionClick);
+  dom.clearDistrictsBtn.addEventListener('click', clearSelectedDistricts);
+  dom.typeSelect.addEventListener('change', toggleAnalyzeButtonState);
+  dom.dateRangeSelect.addEventListener('change', handleDateRangeChange);
+  dom.dateStartInput.addEventListener('input', () => { if (document.activeElement === dom.dateStartInput) dom.dateRangeSelect.value = 'custom'; });
+  dom.dateEndInput.addEventListener('input', () => { if (document.activeElement === dom.dateEndInput) dom.dateRangeSelect.value = 'custom'; });
+  dom.modalCloseBtn.addEventListener('click', () => dom.modal.classList.add('hidden'));
+  dom.resultsTable.addEventListener('click', e => { if (e.target.closest('.details-btn')) showSubTableDetails(e.target.closest('.details-btn')); });
+  dom.projectNameInput.addEventListener('focus', () => dom.filterCard.classList.add('z-elevate-filters'));
+  dom.projectNameInput.addEventListener('input', onProjectInput);
+  dom.projectNameSuggestions.addEventListener('click', onSuggestionClick);
+  dom.projectNameContainer.addEventListener('click', e => { if (e.target.classList.contains('multi-tag-remove')) removeProject(e.target.dataset.name); });
+  
+  document.addEventListener('click', e => {
+      const isClickInsideProject = dom.projectFilterWrapper.contains(e.target);
+      if (!isClickInsideProject) {
+          dom.projectNameSuggestions.classList.add('hidden');
+          if (dom.projectNameInput.value.trim() !== '') dom.projectNameInput.value = '';
+      }
+      
+      const isClickInsideDistrict = dom.districtFilterWrapper.contains(e.target);
+      if (!isClickInsideDistrict) {
+          dom.districtSuggestions.classList.add('hidden');
+      }
+
+      if (!isClickInsideDistrict && !isClickInsideProject) {
+          dom.filterCard.classList.remove('z-elevate-filters');
+      }
+
+      const isClickInsideHeatmap = dom.horizontalPriceGridContainer.contains(e.target) || dom.heatmapLegendContainer.contains(e.target);
+      if (currentLegendFilter.type && !isClickInsideHeatmap) {
+          dom.heatmapLegendContainer.querySelectorAll('.legend-item.active').forEach(item => item.classList.remove('active'));
+          currentLegendFilter = { type: null, value: null };
+          applyHeatmapGridFilter();
+      }
+  });
+  dom.clearProjectsBtn.addEventListener('click', clearSelectedProjects);
+  dom.tabsContainer.addEventListener('click', e => { if (e.target.matches('.tab-button')) switchTab(e.target.dataset.tab); });
+  dom.rankingTable.addEventListener('click', e => { const header = e.target.closest('.sortable-th'); if (!header) return; const sortKey = header.dataset.sortKey; if (currentSort.key === sortKey) { currentSort.order = currentSort.order === 'desc' ? 'asc' : 'desc'; } else { currentSort.key = sortKey; currentSort.order = 'desc'; } renderRankingReport(); });
+  dom.avgTypeToggle.addEventListener('click', (e) => { if (e.target.matches('.avg-type-btn')) { const type = e.target.dataset.type; switchAverageType(type); } });
+  dom.velocityRoomFilterContainer.addEventListener('click', handleVelocityRoomFilterClick);
+  dom.velocitySubTabsContainer.addEventListener('click', handleVelocitySubTabClick);
+  dom.priceGridProjectFilterContainer.addEventListener('click', handlePriceGridProjectFilterClick);
+  dom.analyzeHeatmapBtn.addEventListener('click', analyzeHeatmap);
+  dom.backToGridBtn.addEventListener('click', handleBackToGrid);
+  dom.heatmapLegendContainer.addEventListener('click', handleLegendClick);
+  toggleAnalyzeButtonState();
+}
+
+async function analyzeHeatmap() { isHeatmapActive = true; const btn = dom.analyzeHeatmapBtn; btn.disabled = true; btn.innerHTML = `<div class="loader-sm"></div><span class="ml-2">分析中...</span>`; btn.classList.add('btn-loading'); try { const floorPremium = parseFloat(dom.floorPremiumInput.value); const payload = { filters: { ...getFilters(), floorPremium: (typeof floorPremium === 'number' && floorPremium >= 0) ? floorPremium : 0.3 } }; const response = await fetch(RANKING_ANALYSIS_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4Ym1iYmZyemJ0dXVleXNpY29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODg5ODksImV4cCI6MjA2NjI2NDk4OX0.1IUynv5eK1xF_3pb-oasqaTrPvbeAOC4Sc1oykPBy4M' }, body: JSON.stringify(payload) }); if (!response.ok) { const err = await response.json().catch(() => ({ error: `熱力圖分析失敗: ${response.status}` })); throw new Error(err.error); } analysisDataCache = await response.json(); renderPriceGapHeatmap(); dom.heatmapInfoContainer.classList.remove('hidden'); btn.innerHTML = `<i class="fas fa-sync-alt mr-2"></i>重新分析`; dom.backToGridBtn.classList.remove('hidden'); } catch (error) { console.error("熱力圖分析失敗:", error); showMessage(`熱力圖分析失敗: ${error.message}`, true); isHeatmapActive = false; dom.heatmapInfoContainer.classList.add('hidden'); dom.heatmapSummaryTableContainer.classList.add('hidden'); dom.heatmapHorizontalComparisonTableContainer.classList.add('hidden'); btn.innerHTML = `<i class="fas fa-exclamation-triangle mr-2"></i>分析失敗`; } finally { btn.disabled = false; btn.classList.remove('btn-loading'); } }
+function handleBackToGrid() { isHeatmapActive = false; displayCurrentPriceGrid(); dom.backToGridBtn.classList.add('hidden'); dom.heatmapInfoContainer.classList.add('hidden'); dom.heatmapSummaryTableContainer.classList.add('hidden'); dom.heatmapHorizontalComparisonTableContainer.classList.add('hidden'); dom.analyzeHeatmapBtn.innerHTML = `<i class="fas fa-fire mr-2"></i>開始分析`; }
+function switchAverageType(type) { if (currentAverageType === type || !type) return; currentAverageType = type; dom.avgTypeToggle.querySelector('.avg-type-btn.active').classList.remove('active'); dom.avgTypeToggle.querySelector(`.avg-type-btn[data-type="${type}"]`).classList.add('active'); if (analysisDataCache) { renderUnitPriceReport(); } }
+function switchTab(targetTab) { document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active')); document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active')); document.getElementById(`${targetTab}-content`).classList.add('active'); document.querySelector(`button[data-tab="${targetTab}"]`).classList.add('active'); }
+
+function getFilters() {
+    const filters = {};
+    if (dom.countySelect.value) filters.countyCode = countyCodeMap[dom.countySelect.value] || '';
+    if (selectedDistricts.length > 0) filters.districts = selectedDistricts;
+    if (dom.typeSelect.value) filters.type = dom.typeSelect.value;
+    if (dom.dateStartInput.value) filters.dateStart = dom.dateStartInput.value;
+    if (dom.dateEndInput.value) filters.dateEnd = dom.dateEndInput.value;
+    if (dom.buildingTypeSelect.value) filters.buildingType = dom.buildingTypeSelect.value;
+    if (selectedProjects.length > 0) filters.projectNames = selectedProjects;
+    return filters;
+}
+
+function showLoading(message) { dom.messageArea.innerHTML = `<div class="loader mx-auto"></div><p class="mt-4">${message}</p>`; dom.messageArea.classList.remove('hidden'); dom.tabsContainer.classList.add('hidden'); ['ranking-report-content', 'price-band-report-content', 'unit-price-report-content', 'parking-report-content', 'velocity-report-content', 'price-grid-report-content', 'data-list-content'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('active'); }); }
+function showMessage(message, isError = false) { const messageClass = isError ? 'bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg' : ''; dom.messageArea.innerHTML = `<div class="${messageClass}">${message}</div>`; dom.messageArea.classList.remove('hidden'); dom.tabsContainer.classList.add('hidden'); }
+function formatDate(date) { return date.toISOString().split('T')[0]; }
+function handleDateRangeChange() { const value = dom.dateRangeSelect.value; if (value === 'custom') return; const endDate = new Date(); let startDate = new Date(); switch (value) { case '1q': startDate.setMonth(endDate.getMonth() - 3); break; case '2q': startDate.setMonth(endDate.getMonth() - 6); break; case '3q': startDate.setMonth(endDate.getMonth() - 9); break; case '1y': startDate.setFullYear(endDate.getFullYear() - 1); break; case 'this_year': startDate = new Date(endDate.getFullYear(), 0, 1); break; case 'last_2_years': startDate = new Date(endDate.getFullYear() - 1, 0, 1); break; case 'last_3_years': startDate = new Date(endDate.getFullYear() - 2, 0, 1); break; } dom.dateStartInput.value = formatDate(startDate); dom.dateEndInput.value = formatDate(endDate); }
+async function analyzeData() { if (!dom.countySelect.value) return showMessage('請先選擇一個縣市再進行分析。'); showLoading('分析中，請稍候...'); try { const response = await fetch(RANKING_ANALYSIS_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4Ym1iYmZyemJ0dXVleXNpY29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODg5ODksImV4cCI6MjA2NjI2NDk4OX0.1IUynv5eK1xF_3pb-oasqaTrPvbeAOC4Sc1oykPBy4M' }, body: JSON.stringify({ filters: getFilters() }) }); if (!response.ok) { const err = await response.json().catch(() => ({ error: `分析請求失敗: ${response.status}` })); throw new Error(err.error); } analysisDataCache = await response.json(); if (!analysisDataCache.coreMetrics) { const msg = analysisDataCache.message || '找不到符合條件的分析資料。'; showMessage(msg); return; } dom.messageArea.classList.add('hidden'); dom.tabsContainer.classList.remove('hidden'); currentSort = { key: 'saleAmountSum', order: 'desc' }; renderRankingReport(); renderPriceBandReport(); renderUnitPriceReport(); renderParkingAnalysisReport(); renderSalesVelocityReport(); renderPriceGridAnalysis(); switchTab('ranking-report'); } catch(error) { console.error("數據分析失敗:", error); showMessage(`數據分析失敗: ${error.message}`, true); analysisDataCache = null; } }
+async function fetchData() { showLoading('查詢中，請稍候...'); try { const response = await fetch(EDGE_FUNCTION_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4Ym1iYmZyemJ0dXVleXNpY29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODg5ODksImV4cCI6MjA2NjI2NDk4OX0.1IUynv5eK1xF_3pb-oasqaTrPvbeAOC4Sc1oykPBy4M' }, body: JSON.stringify({ filters: getFilters(), pagination: { page: currentPage, limit: pageSize } }) }); if (!response.ok) { const err = await response.json().catch(() => ({ error: '無法解析伺服器回應' })); throw new Error(err.error); } const result = await response.json(); totalRecords = result.count || 0; if (!result.data || result.data.length === 0) { showMessage('找不到符合條件的資料。'); renderPagination(); return; } renderTable(result.data); renderPagination(); dom.messageArea.classList.add('hidden'); dom.tabsContainer.classList.remove('hidden'); switchTab('data-list'); } catch (error) { console.error('查詢錯誤:', error); showMessage(`查詢錯誤: ${error.message}`, true); totalRecords = 0; renderPagination(); } }
+function formatNumber(num, decimals = 2) { if (typeof num !== 'number' || isNaN(num)) return '-'; return num.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }); }
+function renderRankingReport() { if (!analysisDataCache || !analysisDataCache.coreMetrics) return; const { coreMetrics, projectRanking } = analysisDataCache; dom.metricCardsContainer.innerHTML = `<div class="metric-card"><div class="metric-card-title">市場去化總銷售金額</div><div><span class="metric-card-value">${formatNumber(coreMetrics.totalSaleAmount, 0)}</span><span class="metric-card-unit">萬</span></div></div><div class="metric-card"><div class="metric-card-title">總銷去化房屋坪數</div><div><span class="metric-card-value">${formatNumber(coreMetrics.totalHouseArea, 2)}</span><span class="metric-card-unit">坪</span></div></div><div class="metric-card"><div class="metric-card-title">總平均單價</div><div><span class="metric-card-value">${formatNumber(coreMetrics.overallAveragePrice, 2)}</span><span class="metric-card-unit">萬/坪</span></div></div><div class="metric-card"><div class="metric-card-title">總交易筆數</div><div><span class="metric-card-value">${coreMetrics.transactionCount.toLocaleString()}</span><span class="metric-card-unit">筆</span></div></div>`; projectRanking.sort((a, b) => { const valA = a[currentSort.key]; const valB = b[currentSort.key]; return currentSort.order === 'desc' ? valB - valA : valA - valB; }); const tableHeaders = [{ key: 'rank', label: '排名', sortable: false },{ key: 'projectName', label: '建案名稱', sortable: false },{ key: 'saleAmountSum', label: '交易總價(萬)', sortable: true },{ key: 'houseAreaSum', label: '房屋面積(坪)', sortable: true },{ key: 'transactionCount', label: '資料筆數', sortable: true },{ key: 'marketShare', label: '市場佔比(%)', sortable: true },{ key: 'averagePrice', label: '平均單價(萬)', sortable: true },{ key: 'minPrice', label: '最低單價(萬)', sortable: true },{ key: 'maxPrice', label: '最高單價(萬)', sortable: true },{ key: 'medianPrice', label: '單價中位數(萬)', sortable: true },{ key: 'avgParkingPrice', label: '車位平均單價', sortable: true }]; let headerHtml = '<thead><tr>'; tableHeaders.forEach(h => { if (h.sortable) { const sortClass = currentSort.key === h.key ? currentSort.order : ''; headerHtml += `<th class="sortable-th ${sortClass}" data-sort-key="${h.key}">${h.label}<span class="sort-icon">▼</span></th>`; } else { headerHtml += `<th>${h.label}</th>`; } }); headerHtml += '</tr></thead>'; let bodyHtml = '<tbody>'; projectRanking.slice(0, 15).forEach((proj, index) => { bodyHtml += `<tr class="hover:bg-dark-card transition-colors"><td>${index + 1}</td><td>${proj.projectName}</td><td>${formatNumber(proj.saleAmountSum, 0)}</td><td>${formatNumber(proj.houseAreaSum)}</td><td>${proj.transactionCount.toLocaleString()}</td><td>${formatNumber(proj.marketShare)}%</td><td>${formatNumber(proj.averagePrice)}</td><td>${formatNumber(proj.minPrice)}</td><td>${formatNumber(proj.maxPrice)}</td><td>${formatNumber(proj.medianPrice)}</td><td>${formatNumber(proj.avgParkingPrice, 0)}</td></tr>`; }); bodyHtml += '</tbody>'; let footerHtml = `<tfoot class="bg-dark-card font-bold"><tr class="border-t-2 border-gray-600"><td colspan="2">總計</td><td>${formatNumber(coreMetrics.totalSaleAmount, 0)}</td><td>${formatNumber(coreMetrics.totalHouseArea)}</td><td>${coreMetrics.transactionCount.toLocaleString()}</td><td colspan="6"></td></tr></tfoot>`; dom.rankingTable.innerHTML = headerHtml + bodyHtml + footerHtml; }
+function renderPriceBandReport() { if (!analysisDataCache || !analysisDataCache.priceBandAnalysis) return; const { priceBandAnalysis } = analysisDataCache; priceBandAnalysis.sort((a, b) => { if (a.rooms !== b.rooms) return a.rooms - b.rooms; return a.bathrooms - b.bathrooms; }); const tableHeaders = ['房數', '衛浴數', '筆數', '平均房屋總價', '最低房屋總價', '1/4分位房屋總價', '中位數房屋總價', '3/4分位房屋總價', '最高房屋總價']; let headerHtml = '<thead><tr>' + tableHeaders.map(h => `<th>${h}</th>`).join('') + '</tr></thead>'; let bodyHtml = '<tbody>'; priceBandAnalysis.forEach(item => { bodyHtml += `<tr class="hover:bg-dark-card transition-colors"><td>${item.rooms}</td><td>${item.bathrooms}</td><td>${item.count.toLocaleString()}</td><td>${formatNumber(item.avgPrice, 0)}</td><td>${formatNumber(item.minPrice, 0)}</td><td>${formatNumber(item.q1Price, 0)}</td><td>${formatNumber(item.medianPrice, 0)}</td><td>${formatNumber(item.q3Price, 0)}</td><td>${formatNumber(item.maxPrice, 0)}</td></tr>`; }); bodyHtml += '</tbody>'; dom.priceBandTable.innerHTML = headerHtml + bodyHtml; }
+function renderUnitPriceReport() { if (!analysisDataCache || !analysisDataCache.unitPriceAnalysis) return; const { residentialStats, typeComparison } = analysisDataCache.unitPriceAnalysis; const statsContainer = dom.residentialStatsTableContainer; if (residentialStats && residentialStats.avgPrice) { const avgPriceToShow = residentialStats.avgPrice[currentAverageType]; const minPriceTooltip = residentialStats.minPriceProject ? `建案: ${residentialStats.minPriceProject} | 戶型: ${residentialStats.minPriceUnit || '-'} | 樓層: ${residentialStats.minPriceFloor || '-'}` : ''; const maxPriceTooltip = residentialStats.maxPriceProject ? `建案: ${residentialStats.maxPriceProject} | 戶型: ${residentialStats.maxPriceUnit || '-'} | 樓層: ${residentialStats.maxPriceFloor || '-'}` : ''; statsContainer.innerHTML = `<table class="min-w-full divide-y divide-gray-800"><thead><tr><th class="w-1/2">統計項目</th><th class="w-1/2">房屋單價 (萬/坪)</th></tr></thead><tbody><tr class="hover:bg-dark-card"><td class="font-medium text-gray-300">平均單價</td><td>${formatNumber(avgPriceToShow)}</td></tr><tr class="hover:bg-dark-card"><td class="font-medium text-gray-300">最低單價</td><td><span class="has-tooltip" data-tooltip="${minPriceTooltip}">${formatNumber(residentialStats.minPrice)}</span></td></tr><tr class="hover:bg-dark-card"><td class="font-medium text-gray-300">1/4分位數單價</td><td>${formatNumber(residentialStats.q1Price)}</td></tr><tr class="hover:bg-dark-card"><td class="font-medium text-gray-300">中位數單價</td><td>${formatNumber(residentialStats.medianPrice)}</td></tr><tr class="hover:bg-dark-card"><td class="font-medium text-gray-300">3/4分位數單價</td><td>${formatNumber(residentialStats.q3Price)}</td></tr><tr class="hover:bg-dark-card"><td class="font-medium text-gray-300">最高單價</td><td><span class="has-tooltip" data-tooltip="${maxPriceTooltip}">${formatNumber(residentialStats.maxPrice)}</span></td></tr></tbody></table>`; dom.residentialStatsExtraInfo.innerHTML = `<p><span class="font-semibold text-cyan-400">最低房屋單價建案：</span>${residentialStats.minPriceProject || 'N/A'}</p><p><span class="font-semibold text-purple-400">最高房屋單價建案：</span>${residentialStats.maxPriceProject || 'N/A'}</p>`; } else { statsContainer.innerHTML = '<p class="text-gray-500">無符合條件的住宅交易資料可供分析。</p>'; dom.residentialStatsExtraInfo.innerHTML = ''; } const comparisonContainer = dom.typeComparisonTableContainer; if (typeComparison && typeComparison.length > 0) { let comparisonHtml = `<table class="min-w-full divide-y divide-gray-800"><thead><tr><th>建案名稱</th><th>住宅均價(萬/坪)</th><th>店舖均價(萬/坪)</th><th>店舖對住宅倍數</th><th>事務所均價(萬/坪)</th><th>事務所對住宅倍數</th></tr></thead><tbody>`; typeComparison.forEach(item => { const residentialAvgToShow = (item.residentialAvg && typeof item.residentialAvg === 'object') ? item.residentialAvg[currentAverageType] : 0; const shopAvgToShow = (item.shopAvg && typeof item.shopAvg === 'object') ? item.shopAvg[currentAverageType] : 0; const officeAvgToShow = (item.officeAvg && typeof item.officeAvg === 'object') ? item.officeAvg[currentAverageType] : 0; comparisonHtml += `<tr class="hover:bg-dark-card"><td>${item.projectName}</td><td>${residentialAvgToShow > 0 ? formatNumber(residentialAvgToShow) : '-'}</td><td>${shopAvgToShow > 0 ? formatNumber(shopAvgToShow) : '-'}</td><td>${item.shopMultiple > 0 ? formatNumber(item.shopMultiple) + ' 倍' : '-'}</td><td>${officeAvgToShow > 0 ? formatNumber(officeAvgToShow) : '-'}</td><td>${item.officeMultiple > 0 ? formatNumber(item.officeMultiple) + ' 倍' : '-'}</td></tr>`; }); comparisonHtml += `</tbody></table>`; comparisonContainer.innerHTML = comparisonHtml; } else { comparisonContainer.innerHTML = '<p class="text-gray-500">無符合條件的建案可進行類型比較。</p>'; } }
+function renderParkingAnalysisReport() { if (!analysisDataCache || !analysisDataCache.parkingAnalysis) return; const { parkingRatio, avgPriceByType, rampPlanePriceByFloor } = analysisDataCache.parkingAnalysis; if (parkingRatio) { dom.parkingRatioTableContainer.innerHTML = `<table class="min-w-full divide-y divide-gray-800"><thead><tr><th>配置類型</th><th>交易筆數</th><th>佔比(%)</th></tr></thead><tbody><tr class="hover:bg-dark-card"><td>有搭車位</td><td>${parkingRatio.withParking.count.toLocaleString()}</td><td>${formatNumber(parkingRatio.withParking.percentage, 2)}%</td></tr><tr class="hover:bg-dark-card"><td>沒搭車位</td><td>${parkingRatio.withoutParking.count.toLocaleString()}</td><td>${formatNumber(parkingRatio.withoutParking.percentage, 2)}%</td></tr></tbody></table>`; } else { dom.parkingRatioTableContainer.innerHTML = '<p class="text-gray-500">無車位配比資料可供分析。</p>'; } if (avgPriceByType && avgPriceByType.length > 0) { let avgPriceHtml = `<table class="min-w-full divide-y divide-gray-800"><thead><tr><th>車位類型</th><th>交易筆數</th><th>車位總數</th><th>平均單價(萬)</th><th>單價中位數(萬)</th><th>單價3/4位數(萬)</th></tr></thead><tbody>`; avgPriceByType.sort((a, b) => b.transactionCount - a.transactionCount).forEach(item => { avgPriceHtml += `<tr class="hover:bg-dark-card"><td>${item.type}</td><td>${item.transactionCount.toLocaleString()}</td><td>${item.count.toLocaleString()}</td><td>${formatNumber(item.avgPrice, 0)}</td><td>${formatNumber(item.medianPrice, 0)}</td><td>${formatNumber(item.q3Price, 0)}</td></tr>`; }); avgPriceHtml += `</tbody></table>`; dom.avgPriceByTypeTableContainer.innerHTML = avgPriceHtml; } else { dom.avgPriceByTypeTableContainer.innerHTML = '<p class="text-gray-500">無含車位的交易資料可供分析。</p>'; } if (rampPlanePriceByFloor && rampPlanePriceByFloor.some(item => item.count > 0)) { const floorMapping = {'B1': '地下一樓', 'B2': '地下二樓', 'B3': '地下三樓', 'B4': '地下四樓', 'B5_below': '地下五樓含以下'}; let floorPriceHtml = `<table class="min-w-full divide-y divide-gray-800"><thead><tr><th>樓層</th><th>筆數</th><th>均價(萬)</th><th>中位數(萬)</th><th>3/4位數(萬)</th><th>最高價(萬)</th><th>最低價(萬)</th></tr></thead><tbody>`; rampPlanePriceByFloor.forEach(item => { if (item && item.count > 0) { const maxPriceTooltip = item.maxPriceProject ? `建案: ${item.maxPriceProject} | 戶型: ${item.maxPriceUnit || '-'} | 樓層: ${item.maxPriceFloor || '-'}` : ''; const minPriceTooltip = item.minPriceProject ? `建案: ${item.minPriceProject} | 戶型: ${item.minPriceUnit || '-'} | 樓層: ${item.minPriceFloor || '-'}` : ''; floorPriceHtml += `<tr class="hover:bg-dark-card"><td>${floorMapping[item.floor] || item.floor}</td><td>${item.count.toLocaleString()}</td><td>${formatNumber(item.avgPrice, 0)}</td><td>${formatNumber(item.medianPrice, 0)}</td><td>${formatNumber(item.q3Price, 0)}</td><td><span class="has-tooltip" data-tooltip="${maxPriceTooltip}">${formatNumber(item.maxPrice, 0)}</span></td><td><span class="has-tooltip" data-tooltip="${minPriceTooltip}">${formatNumber(item.minPrice, 0)}</span></td></tr>`; } }); floorPriceHtml += `</tbody></table>`; dom.rampPlanePriceByFloorTableContainer.innerHTML = floorPriceHtml; } else { dom.rampPlanePriceByFloorTableContainer.innerHTML = '<p class="text-gray-500">無符合條件的坡道平面車位交易資料可供分析。</p>'; } }
+function renderSalesVelocityReport() { if (!analysisDataCache || !analysisDataCache.salesVelocityAnalysis) return; const { allRoomTypes } = analysisDataCache.salesVelocityAnalysis; if (allRoomTypes && allRoomTypes.length > 0) { selectedVelocityRooms = [...allRoomTypes]; dom.velocityRoomFilterContainer.innerHTML = allRoomTypes.map(roomType => `<button class="capsule-btn active" data-room-type="${roomType}">${roomType}</button>`).join(''); } else { dom.velocityRoomFilterContainer.innerHTML = '<p class="text-gray-500 text-sm">無可用房型</p>'; } renderVelocityTable(); }
+function renderVelocityTable() { if (!analysisDataCache || !analysisDataCache.salesVelocityAnalysis) return; const dataForView = analysisDataCache.salesVelocityAnalysis[currentVelocityView] || {}; const timeKeys = Object.keys(dataForView).sort().reverse(); let headerHtml = '<thead><tr class="bg-dark-card"><th rowspan="2" class="sticky left-0 bg-dark-card z-10">時間</th>'; selectedVelocityRooms.forEach(roomType => { headerHtml += `<th colspan="3" class="text-center border-l border-r border-gray-700">${roomType}</th>`; }); headerHtml += `<th colspan="3" class="text-center font-bold text-cyan-400 border-l border-gray-700">總計</th></tr><tr class="bg-dark-card">`; const subHeaders = ['資料筆數', '產權總價(萬)', '房屋坪數(坪)']; selectedVelocityRooms.forEach(() => { subHeaders.forEach(sub => headerHtml += `<th class="border-l border-gray-700">${sub}</th>`); }); subHeaders.forEach(sub => headerHtml += `<th class="font-bold text-cyan-400 border-l border-gray-700">${sub}</th>`); headerHtml += '</tr></thead>'; let bodyHtml = '<tbody>'; timeKeys.forEach(timeKey => { const periodData = dataForView[timeKey]; let rowTotal = { count: 0, priceSum: 0, areaSum: 0 }; let rowHtml = `<tr class="hover:bg-dark-card"><td class="sticky left-0 bg-dark-card hover:bg-gray-800 z-10 font-mono">${timeKey}</td>`; selectedVelocityRooms.forEach(roomType => { const stats = periodData[roomType]; if (stats) { rowHtml += `<td class="border-l border-gray-700">${stats.count.toLocaleString()}</td><td>${formatNumber(stats.priceSum, 0)}</td><td>${formatNumber(stats.areaSum, 2)}</td>`; rowTotal.count += stats.count; rowTotal.priceSum += stats.priceSum; rowTotal.areaSum += stats.areaSum; } else { rowHtml += `<td class="border-l border-gray-700">-</td><td>-</td><td>-</td>`; } }); rowHtml += `<td class="font-semibold border-l border-gray-700">${rowTotal.count.toLocaleString()}</td><td class="font-semibold">${formatNumber(rowTotal.priceSum, 0)}</td><td class="font-semibold">${formatNumber(rowTotal.areaSum, 2)}</td></tr>`; bodyHtml += rowHtml; }); bodyHtml += '</tbody>'; dom.velocityTableContainer.innerHTML = timeKeys.length > 0 ? `<table class="min-w-full divide-y divide-gray-800">${headerHtml}${bodyHtml}</table>` : '<p class="text-gray-500 p-4 text-center">在此條件下無資料。</p>'; }
+function handleVelocityRoomFilterClick(e) { const button = e.target.closest('.capsule-btn'); if (!button) return; const roomType = button.dataset.roomType; button.classList.toggle('active'); if (button.classList.contains('active')) { if (!selectedVelocityRooms.includes(roomType)) selectedVelocityRooms.push(roomType); } else { selectedVelocityRooms = selectedVelocityRooms.filter(r => r !== roomType); } const { allRoomTypes } = analysisDataCache.salesVelocityAnalysis; selectedVelocityRooms.sort((a, b) => allRoomTypes.indexOf(a) - allRoomTypes.indexOf(b)); renderVelocityTable(); }
+function handleVelocitySubTabClick(e) { const button = e.target.closest('.sub-tab-btn'); if (!button) return; currentVelocityView = button.dataset.view; dom.velocitySubTabsContainer.querySelector('.active').classList.remove('active'); button.classList.add('active'); renderVelocityTable(); }
+function renderPriceGridAnalysis() { isHeatmapActive = false; dom.analyzeHeatmapBtn.innerHTML = `<i class="fas fa-fire mr-2"></i>開始分析`; dom.backToGridBtn.classList.add('hidden'); dom.heatmapInfoContainer.classList.add('hidden'); dom.heatmapSummaryTableContainer.classList.add('hidden'); dom.heatmapHorizontalComparisonTableContainer.classList.add('hidden'); const reportContent = dom.priceGridReportContent; if (!analysisDataCache || !analysisDataCache.priceGridAnalysis || !analysisDataCache.priceGridAnalysis.projectNames || analysisDataCache.priceGridAnalysis.projectNames.length === 0) { reportContent.querySelector('.my-4.p-4').classList.add('hidden'); dom.horizontalPriceGridContainer.innerHTML = '<p class="text-gray-500 p-4 text-center">無垂直水平分析資料。</p>'; return; } reportContent.querySelector('.my-4.p-4').classList.remove('hidden'); const { projectNames } = analysisDataCache.priceGridAnalysis; if (projectNames && projectNames.length > 0) { selectedPriceGridProject = projectNames[0]; const filterHtml = projectNames.map(name => `<button class="capsule-btn ${name === selectedPriceGridProject ? 'active' : ''}" data-project="${name}">${name}</button>` ).join(''); dom.priceGridProjectFilterContainer.innerHTML = filterHtml; dom.priceGridProjectFilterContainer.parentElement.classList.remove('hidden'); displayCurrentPriceGrid(); } else { selectedPriceGridProject = null; dom.priceGridProjectFilterContainer.parentElement.classList.add('hidden'); dom.unitColorLegendContainer.innerHTML = ''; dom.horizontalPriceGridContainer.innerHTML = '<p class="text-gray-500 p-4 text-center">無特定建案資料可供分析。</p>'; } }
+function displayCurrentPriceGrid() { if (!analysisDataCache || !analysisDataCache.priceGridAnalysis || !selectedPriceGridProject) { dom.horizontalPriceGridContainer.innerHTML = '<p class="text-gray-500 p-4 text-center">請從上方選擇建案以查看銷控表。</p>'; dom.unitColorLegendContainer.innerHTML = ''; return; } const data = analysisDataCache.priceGridAnalysis.byProject[selectedPriceGridProject]; if (!data) { dom.horizontalPriceGridContainer.innerHTML = `<p class="text-gray-500">找不到建案「${selectedPriceGridProject}」的分析資料。</p>`; dom.unitColorLegendContainer.innerHTML = ''; return; } dom.analyzeHeatmapBtn.disabled = false; renderUnitColorLegend(data.unitColorMap); renderHorizontalPriceGrid(data.horizontalGrid, data.sortedFloors, data.sortedUnits, data.unitColorMap); }
+function handlePriceGridProjectFilterClick(e) { const button = e.target.closest('.capsule-btn'); if (!button || button.classList.contains('active')) return; selectedPriceGridProject = button.dataset.project; if (dom.priceGridProjectFilterContainer.querySelector('.active')) { dom.priceGridProjectFilterContainer.querySelector('.active').classList.remove('active'); } button.classList.add('active'); isHeatmapActive = false; dom.analyzeHeatmapBtn.innerHTML = `<i class="fas fa-fire mr-2"></i>開始分析`; dom.backToGridBtn.classList.add('hidden'); dom.heatmapInfoContainer.classList.add('hidden'); dom.heatmapSummaryTableContainer.classList.add('hidden'); dom.heatmapHorizontalComparisonTableContainer.classList.add('hidden'); displayCurrentPriceGrid(); }
+function renderUnitColorLegend(unitColorMap) { if (!unitColorMap || Object.keys(unitColorMap).length === 0) { dom.unitColorLegendContainer.innerHTML = ''; return; } let legendHtml = Object.entries(unitColorMap).map(([unit, color]) => `<div class="flex items-center"><span class="w-4 h-4 rounded-full mr-2" style="background-color: ${color};"></span><span>${unit}</span></div>` ).join(''); dom.unitColorLegendContainer.innerHTML = legendHtml; }
+function renderHorizontalPriceGrid(grid, floors, units, colorMap) { if (!grid || !floors || !units || floors.length === 0 || units.length === 0) { dom.horizontalPriceGridContainer.innerHTML = '<p class="text-gray-500">無水平價盤資料。</p>'; return; } let tableHtml = '<table class="min-w-full divide-y divide-gray-800 border-collapse">'; let headerHtml = '<thead><tr><th class="sticky left-0 bg-dark-card z-10 p-2">樓層 \\ 戶別</th>'; units.forEach(unit => { headerHtml += `<th class="text-center p-2" style="background-color:${colorMap[unit] || '#4b5563'}80;">${unit}</th>`; }); headerHtml += '</tr></thead>'; let bodyHtml = '<tbody>'; floors.forEach(floor => { bodyHtml += `<tr class="hover:bg-gray-800/50"><td class="font-bold sticky left-0 bg-dark-card z-10 p-2">${floor}</td>`; units.forEach(unit => { const cellData = grid[floor] ? grid[floor][unit] : null; if (cellData && cellData.length > 0) { const hasStorefront = cellData.some(tx => tx.isStorefront); const bgColor = hasStorefront ? 'rgba(107, 33, 168, 0.2)' : `${colorMap[unit] || '#374151'}40`; let cellContent = cellData.map(tx => { const parkingIcon = tx.hasParking ? ` <i class="fas fa-parking parking-icon" title="含車位"></i>` : ''; const storefrontIcon = tx.isStorefront ? `<i class="fas fa-store" title="店舖類型"></i> ` : ''; const tooltipText = tx.tooltip || `交易總價: ${formatNumber(tx.tooltipInfo.totalPrice, 0)} 萬`; return `<div class="has-tooltip py-1" data-tooltip="${tooltipText}"><span>${storefrontIcon}${formatNumber(tx.unitPrice, 1)}萬</span>${parkingIcon}<br><span class="text-xs text-gray-400">(${tx.transactionDate})</span></div>`; }).join(''); bodyHtml += `<td style="background-color: ${bgColor}; vertical-align: top; padding: 4px 8px; border-left: 1px solid #374151;"><div class="grid-cell-content">${cellContent}</div></td>`; } else { bodyHtml += `<td class="bg-dark-card/50" style="border-left: 1px solid #374151;">-</td>`; } }); bodyHtml += `</tr>`; }); bodyHtml += '</tbody>'; tableHtml += headerHtml + bodyHtml + '</table>'; dom.horizontalPriceGridContainer.innerHTML = tableHtml; }
+function renderTable(data) { if (!data || data.length === 0) { dom.resultsTable.innerHTML = '<tbody><tr><td colspan="99" class="text-center p-4">無資料</td></tr></tbody>'; return; } const isPresale = data[0]['交易類型'] === '預售交易'; const hiddenColumns = ['編號', '縣市代碼', '交易類型', '戶型']; const headers = Object.keys(data[0]); const headerRow = document.createElement('tr'); headerRow.innerHTML = '<th>操作</th>'; headers.forEach(header => { if (!hiddenColumns.includes(header)) { const th = document.createElement('th'); th.textContent = header; headerRow.appendChild(th); if (isPresale && header === '戶別') { const newTh = document.createElement('th'); newTh.textContent = '戶型'; headerRow.appendChild(newTh); } } }); const thead = document.createElement('thead'); thead.appendChild(headerRow); const tbody = document.createElement('tbody'); data.forEach(row => { const tr = document.createElement('tr'); tr.className = 'hover:bg-dark-card transition-colors'; const remark = row['備註'] || ''; if (remark.includes('露台') || remark.includes('親友') || remark.includes('員工')) { tr.classList.add('special-remark-row'); } tr.innerHTML = `<td><button class="details-btn bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1 rounded-md" data-id="${row['編號']}" data-type="${row['交易類型']}" data-county="${row['縣市代碼']}">附表</button></td>`; headers.forEach(header => { if (!hiddenColumns.includes(header)) { const td = document.createElement('td'); const value = row[header]; if (header === '地址' || header === '備註') { td.innerHTML = `<div class="scrollable-cell">${value ?? "-"}</div>`; } else { const cellText = (typeof value === 'number' && !Number.isInteger(value)) ? formatNumber(value) : (value ?? "-"); td.textContent = cellText; } tr.appendChild(td); if (isPresale && header === '戶別') { const unitTypeTd = document.createElement('td'); unitTypeTd.textContent = row['戶型'] || '-'; tr.appendChild(unitTypeTd); } } }); tbody.appendChild(tr); }); dom.resultsTable.innerHTML = ''; dom.resultsTable.append(thead, tbody); }
+function renderPagination() { dom.paginationControls.innerHTML = ''; if (totalRecords === 0 && currentPage === 1) { dom.paginationControls.innerHTML = `<span>共 0 筆資料</span>`; return; } const totalPages = Math.ceil(totalRecords / pageSize); dom.paginationControls.innerHTML = `<div>共 ${totalRecords} 筆資料</div><div class="flex items-center space-x-2"><button id="prev-page" class="bg-gray-700 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">上一頁</button><span class="px-4">第 ${currentPage} / ${totalPages > 0 ? totalPages : 1} 頁</span><button id="next-page" class="bg-gray-700 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">下一頁</button></div>`; const prevBtn = document.getElementById('prev-page'); const nextBtn = document.getElementById('next-page'); prevBtn.disabled = currentPage === 1; nextBtn.disabled = currentPage >= totalPages; prevBtn.onclick = () => { currentPage--; fetchData() }; nextBtn.onclick = () => { currentPage++; fetchData() }; }
+async function showSubTableDetails(btn) { const { id, type, county } = btn.dataset; dom.modalTitle.textContent = `附表詳細資料 (編號: ${id})`; dom.modalContent.innerHTML = '<div class="loader mx-auto"></div>'; dom.modal.classList.remove('hidden'); try { if (!id || !type || !county || county === 'undefined') { throw new Error(`前端參數不足，無法查詢附表。 (編號: ${id}, 類型: ${type}, 縣市: ${county})`); } const response = await fetch(SUB_DATA_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4Ym1iYmZyemJ0dXVleXNpY29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODg5ODksImV4cCI6MjA2NjI2NDk4OX0.1IUynv5eK1xF_3pb-oasqaTrPvbeAOC4Sc1oykPBy4M' }, body: JSON.stringify({ id, type, county }) }); if (!response.ok) { const errorResult = await response.json().catch(() => ({ error: '無法從伺服器獲取附表資料' })); throw new Error(errorResult.error); } const result = await response.json(); let contentHTML = '<div class="space-y-6">'; if (type !== '預售交易') contentHTML += renderSubTable('建物資料', result.build); contentHTML += renderSubTable('土地資料', result.land); contentHTML += renderSubTable('車位資料', result.park); contentHTML = (contentHTML === '<div class="space-y-6">') ? '<p>此筆紀錄沒有對應的附表資料。</p>' : contentHTML + '</div>'; dom.modalContent.innerHTML = contentHTML; } catch (error) { dom.modalContent.innerHTML = `<p class="text-red-400">查詢失敗: ${error.message}</p>`; } }
+function renderSubTable(title, records) { if (!records || !Array.isArray(records) || records.length === 0) { return `<div class="mb-4"><h3 class="text-lg font-semibold text-cyan-400 mb-2">${title}</h3><p class="text-sm text-gray-500">無資料</p></div>`; } const headers = Object.keys(records[0]).filter(h => h !== 'id' && h !== '編號'); let html = `<div><h3 class="text-lg font-semibold text-cyan-400 mb-2">${title}</h3><div class="overflow-x-auto"><table class="w-full text-sm text-left"><thead><tr class="border-b border-gray-600">`; headers.forEach(header => { html += `<th class="py-2 pr-2 font-medium text-gray-400">${header}</th>` }); html += '</tr></thead><tbody>'; records.forEach(record => { html += '<tr class="border-b border-gray-700 last:border-b-0">'; headers.forEach(header => { html += `<td class="py-2 pr-2">${record[header] ?? "-"}</td>` }); html += '</tr>' }); html += '</tbody></table></div></div>'; return html; }
+function toggleAnalyzeButtonState() { const isCountySelected = !!dom.countySelect.value; const isValidType = dom.typeSelect.value === '預售交易'; dom.analyzeBtn.disabled = !(isCountySelected && isValidType); dom.analyzeHeatmapBtn.disabled = !(isCountySelected && isValidType); }
+
+// --- 行政區複選相關函式 ---
+function updateDistrictOptions() {
+    const selectedCounty = dom.countySelect.value;
+    clearSelectedDistricts();
+    dom.districtSuggestions.innerHTML = '';
     
-    <script>
-        // --- 全域變數定義 ---
-        let map; // Leaflet 地圖實例
-        let baseLayer; // 地圖底圖圖層
-        let buildingLayer; // 建築物圖層
-        let metroLayer; // 捷運圖層
-        let currentBuildings = []; // 當前載入的建築物資料
-        let selectedBuilding = null; // 當前選擇的建築物
-        let userAddedHeights = {}; // 用戶手動新增的建築高度資料
+    if (selectedCounty && districtData[selectedCounty]) {
+        const districtNames = districtData[selectedCounty];
+        const selectAllHtml = `<label class="suggestion-item font-bold text-cyan-400" data-name="all"><input type="checkbox" id="district-select-all"><span class="flex-grow">全選/全不選</span></label><hr class="border-gray-600 mx-2">`;
+        const districtsHtml = districtNames.map(name => {
+            const isChecked = selectedDistricts.includes(name);
+            return `<label class="suggestion-item" data-name="${name}"><input type="checkbox" ${isChecked ? 'checked' : ''}><span class="flex-grow">${name}</span></label>`
+        }).join('');
 
-        // --- 預設地圖樣式 (使用者提供的暗色主題) ---
-        const defaultMapStyle = [
-            {"featureType":"all","elementType":"labels.text.fill","stylers":[{"saturation":36},{"color":"#ffffff"},{"lightness":40}]},
-            {"featureType":"all","elementType":"labels.text.stroke","stylers":[{"visibility":"on"},{"color":"#000000"},{"lightness":16}]},
-            {"featureType":"all","elementType":"labels.icon","stylers":[{"visibility":"off"}]},
-            {"featureType":"administrative","elementType":"geometry.fill","stylers":[{"color":"#000000"},{"lightness":20}]},
-            {"featureType":"administrative","elementType":"geometry.stroke","stylers":[{"color":"#000000"},{"lightness":17},{"weight":1.2}]},
-            {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":20}]},
-            {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":21}]},
-            {"featureType":"road.highway","elementType":"geometry.fill","stylers":[{"color":"#000000"},{"lightness":17}]},
-            {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#000000"},{"lightness":29},{"weight":0.2}]},
-            {"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":18}]},
-            {"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":16}]},
-            {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#000000"},{"lightness":19}]},
-            {"featureType":"water","elementType":"geometry","stylers":[{"color":"#1a1a1a"},{"lightness":17}]}
-        ];
+        dom.districtSuggestions.innerHTML = selectAllHtml + districtsHtml;
+        dom.districtContainer.classList.remove('disabled');
+        dom.districtInputArea.textContent = "點擊選擇行政區";
+        dom.projectNameInput.disabled = false;
+        dom.projectNameInput.placeholder = "輸入建案名稱搜尋...";
+    } else {
+        dom.districtContainer.classList.add('disabled');
+        dom.districtInputArea.textContent = "請先選縣市";
+        dom.projectNameInput.disabled = true;
+        dom.projectNameInput.placeholder = "請先選縣市...";
+    }
+    toggleAnalyzeButtonState();
+    clearSelectedProjects();
+}
 
-        // --- 台灣捷運系統資料 ---
-        const metroSystems = {
-            taipei: {
-                name: '台北捷運', color: '#0066cc', stations: [
-                    // 淡水信義線 (紅線)
-                    {name: '淡水', lat: 25.1675, lng: 121.4456, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '紅樹林', lat: 25.1538, lng: 121.4582, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '竹圍', lat: 25.1370, lng: 121.4598, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '關渡', lat: 25.1256, lng: 121.4672, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '忠義', lat: 25.1307, lng: 121.4735, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '復興崗', lat: 25.1373, lng: 121.4851, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '北投', lat: 25.1314, lng: 121.4985, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '奇岩', lat: 25.1257, lng: 121.5015, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '唭哩岸', lat: 25.1202, lng: 121.5065, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '石牌', lat: 25.1146, lng: 121.5156, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '明德', lat: 25.1097, lng: 121.5185, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '芝山', lat: 25.1034, lng: 121.5225, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '士林', lat: 25.0939, lng: 121.5260, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '劍潭', lat: 25.0847, lng: 121.5250, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '圓山', lat: 25.0717, lng: 121.5200, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '民權西路', lat: 25.0626, lng: 121.5200, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '雙連', lat: 25.0576, lng: 121.5200, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '中山', lat: 25.0520, lng: 121.5200, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '台北車站', lat: 25.0478, lng: 121.5170, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '台大醫院', lat: 25.0416, lng: 121.5170, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '中正紀念堂', lat: 25.0331, lng: 121.5183, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '東門', lat: 25.0341, lng: 121.5286, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '大安森林公園', lat: 25.0333, lng: 121.5356, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '大安', lat: 25.0326, lng: 121.5434, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '信義安和', lat: 25.0330, lng: 121.5527, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '台北101/世貿', lat: 25.0330, lng: 121.5637, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    {name: '象山', lat: 25.0330, lng: 121.5695, line: 'tamsui-xinyi', lineColor: '#e3002c', status: 'operational'},
-                    // 板南線 (藍線)
-                    {name: '頂埔', lat: 24.9588, lng: 121.4218, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '永寧', lat: 24.9665, lng: 121.4368, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '土城', lat: 24.9732, lng: 121.4448, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '海山', lat: 24.9857, lng: 121.4486, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '亞東醫院', lat: 25.0089, lng: 121.4529, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '府中', lat: 25.0170, lng: 121.4594, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '板橋', lat: 25.0146, lng: 121.4627, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '新埔', lat: 25.0230, lng: 121.4676, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '江子翠', lat: 25.0299, lng: 121.4725, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '龍山寺', lat: 25.0378, lng: 121.4998, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '西門', lat: 25.0421, lng: 121.5081, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '善導寺', lat: 25.0446, lng: 121.5244, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '忠孝新生', lat: 25.0423, lng: 121.5324, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '忠孝復興', lat: 25.0418, lng: 121.5442, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '忠孝敦化', lat: 25.0418, lng: 121.5496, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '國父紀念館', lat: 25.0418, lng: 121.5575, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '市政府', lat: 25.0418, lng: 121.5659, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '永春', lat: 25.0406, lng: 121.5766, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '後山埤', lat: 25.0446, lng: 121.5825, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '昆陽', lat: 25.0501, lng: 121.5930, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '南港', lat: 25.0543, lng: 121.6069, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    {name: '南港展覽館', lat: 25.0556, lng: 121.6178, line: 'bannan', lineColor: '#0070bd', status: 'operational'},
-                    // 文湖線 (棕線)
-                    {name: '動物園', lat: 24.9989, lng: 121.5784, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '木柵', lat: 25.0004, lng: 121.5735, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '萬芳社區', lat: 25.0039, lng: 121.5684, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '萬芳醫院', lat: 25.0072, lng: 121.5583, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '辛亥', lat: 25.0066, lng: 121.5575, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '麟光', lat: 25.0180, lng: 121.5573, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '六張犁', lat: 25.0243, lng: 121.5531, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '科技大樓', lat: 25.0256, lng: 121.5436, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '南京復興', lat: 25.0521, lng: 121.5442, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '中山國中', lat: 25.0605, lng: 121.5442, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '松山機場', lat: 25.0628, lng: 121.5515, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '大直', lat: 25.0794, lng: 121.5474, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '劍南路', lat: 25.0841, lng: 121.5522, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '西湖', lat: 25.0827, lng: 121.5672, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '港墘', lat: 25.0794, lng: 121.5750, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '文德', lat: 25.0785, lng: 121.5840, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '內湖', lat: 25.0836, lng: 121.5896, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '大湖公園', lat: 25.0829, lng: 121.6010, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '葫洲', lat: 25.0722, lng: 121.6088, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '東湖', lat: 25.0674, lng: 121.6114, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    {name: '南港軟體園區', lat: 25.0650, lng: 121.6157, line: 'wenhu', lineColor: '#c48c31', status: 'operational'},
-                    // 松山新店線 (綠線)
-                    {name: '新店', lat: 24.9574, lng: 121.5374, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '新店區公所', lat: 24.9678, lng: 121.5412, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '七張', lat: 24.9758, lng: 121.5426, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '小碧潭', lat: 24.9759, lng: 121.5297, line: 'songshan-xindian-branch', lineColor: '#008659', status: 'operational'},
-                    {name: '大坪林', lat: 24.9826, lng: 121.5410, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '景美', lat: 24.9933, lng: 121.5407, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '萬隆', lat: 25.0018, lng: 121.5394, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '公館', lat: 25.0148, lng: 121.5342, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '台電大樓', lat: 25.0209, lng: 121.5279, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '古亭', lat: 25.0266, lng: 121.5225, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '小南門', lat: 25.0356, lng: 121.5096, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '北門', lat: 25.0495, lng: 121.5101, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '松江南京', lat: 25.0520, lng: 121.5324, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '台北小巨蛋', lat: 25.0521, lng: 121.5496, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '南京三民', lat: 25.0521, lng: 121.5644, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    {name: '松山', lat: 25.0490, lng: 121.5782, line: 'songshan-xindian', lineColor: '#008659', status: 'operational'},
-                    // 中和新蘆線 (橙線)
-                    {name: '南勢角', lat: 24.9905, lng: 121.5080, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '景安', lat: 25.0058, lng: 121.5115, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '永安市場', lat: 25.0132, lng: 121.5152, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '頂溪', lat: 25.0204, lng: 121.5170, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '行天宮', lat: 25.0581, lng: 121.5330, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '中山國小', lat: 25.0626, lng: 121.5260, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '大橋頭', lat: 25.0631, lng: 121.5128, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '台北橋', lat: 25.0631, lng: 121.4989, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '菜寮', lat: 25.0631, lng: 121.4854, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '三重', lat: 25.0631, lng: 121.4854, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '先嗇宮', lat: 25.0710, lng: 121.4721, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '頭前庄', lat: 25.0778, lng: 121.4610, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '新莊', lat: 25.0836, lng: 121.4524, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '輔大', lat: 25.0836, lng: 121.4341, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '丹鳳', lat: 25.0836, lng: 121.4241, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    {name: '迴龍', lat: 25.0836, lng: 121.4141, line: 'zhonghe-xinlu', lineColor: '#f8b61c', status: 'operational'},
-                    // 環狀線 (黃線)
-                    {name: '十四張', lat: 24.9877, lng: 121.5306, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '秀朗橋', lat: 24.9928, lng: 121.5238, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '景平', lat: 24.9995, lng: 121.5165, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '中和', lat: 25.0068, lng: 121.4864, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '橋和', lat: 25.0097, lng: 121.4789, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '中原', lat: 25.0118, lng: 121.4722, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '板新', lat: 25.0163, lng: 121.4678, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '新埔民生', lat: 25.0253, lng: 121.4651, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '幸福', lat: 25.0592, lng: 121.4601, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                    {name: '新北產業園區', lat: 25.0785, lng: 121.4596, line: 'circular', lineColor: '#ffd600', status: 'operational'},
-                ]
-            },
-            kaohsiung: {
-                name: '高雄捷運', color: '#00aa55', stations: [
-                    // 紅線
-                    {name: '小港', lat: 22.5656, lng: 120.3500, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '高雄國際機場', lat: 22.5778, lng: 120.3500, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '草衙', lat: 22.5895, lng: 120.3500, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '前鎮高中', lat: 22.6009, lng: 120.3500, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '凱旋', lat: 22.6121, lng: 120.3500, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '獅甲', lat: 22.6217, lng: 120.3191, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '三多商圈', lat: 22.6200, lng: 120.3025, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '中央公園', lat: 22.6237, lng: 120.3015, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '美麗島', lat: 22.6319, lng: 120.3015, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '高雄車站', lat: 22.6391, lng: 120.3015, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '後驛', lat: 22.6502, lng: 120.3015, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '凹子底', lat: 22.6726, lng: 120.3015, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '巨蛋', lat: 22.6814, lng: 120.3015, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '生態園區', lat: 22.6934, lng: 120.3015, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    {name: '左營', lat: 22.6879, lng: 120.3070, line: 'red', lineColor: '#e60012', status: 'operational'},
-                    // 橘線
-                    {name: '西子灣', lat: 22.6253, lng: 120.2662, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '鹽埕埔', lat: 22.6253, lng: 120.2829, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '市議會', lat: 22.6253, lng: 120.2940, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '信義國小', lat: 22.6319, lng: 120.3132, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '文化中心', lat: 22.6319, lng: 120.3247, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '五塊厝', lat: 22.6319, lng: 120.3362, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '技擊館', lat: 22.6319, lng: 120.3477, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '衛武營', lat: 22.6319, lng: 120.3592, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '鳳山西站', lat: 22.6319, lng: 120.3707, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '鳳山', lat: 22.6274, lng: 120.3822, line: 'orange', lineColor: '#ff6900', status: 'operational'},
-                    {name: '大東', lat: 22.6274, lng: 120.3937, line: 'orange', lineColor: '#ff6900', status: 'operational'}
-                ]
-            },
-            taoyuan: {
-                name: '桃園捷運', color: '#663399', stations: [
-                    // 機場線 (紫線)
-                    {name: '三重', lat: 25.0631, lng: 121.4854, line: 'airport', lineColor: '#8b5a96', status: 'operational'},
-                    {name: '長庚醫院', lat: 25.0785, lng: 121.3675, line: 'airport', lineColor: '#8b5a96', status: 'operational'},
-                    {name: '體育大學', lat: 25.0785, lng: 121.3475, line: 'airport', lineColor: '#8b5a96', status: 'operational'},
-                    {name: '坑口', lat: 25.0785, lng: 121.3275, line: 'airport', lineColor: '#8b5a96', status: 'operational'},
-                    {name: '山鼻', lat: 25.0785, lng: 121.3075, line: 'airport', lineColor: '#8b5a96', status: 'operational'},
-                    {name: '林口', lat: 25.0785, lng: 121.2875, line: 'airport', lineColor: '#8b5a96', status: 'operational'},
-                    {name: '桃園機場第二航廈', lat: 25.0785, lng: 121.2275, line: 'airport', lineColor: '#8b5a96', status: 'operational'},
-                    {name: '桃園機場第一航廈', lat: 25.0785, lng: 121.2075, line: 'airport', lineColor: '#8b5a96', status: 'operational'}
-                ]
-            },
-            new_taipei: {
-                 name: '新北捷運', color: '#f2c640', stations: [
-                    // 三鶯線 (興建中)
-                    {name: '媽祖田', lat: 24.9542, lng: 121.4111, line: 'sanying', lineColor: '#69b5ce', status: 'future'},
-                    {name: '龍埔', lat: 24.9452, lng: 121.3917, line: 'sanying', lineColor: '#69b5ce', status: 'future'},
-                    {name: '三峽', lat: 24.9388, lng: 121.3813, line: 'sanying', lineColor: '#69b5ce', status: 'future'},
-                    {name: '臺北大學', lat: 24.9363, lng: 121.3683, line: 'sanying', lineColor: '#69b5ce', status: 'future'},
-                    {name: '鶯歌車站', lat: 24.9492, lng: 121.3503, line: 'sanying', lineColor: '#69b5ce', status: 'future'},
-                    {name: '陶瓷老街', lat: 24.9535, lng: 121.3451, line: 'sanying', lineColor: '#69b5ce', status: 'future'}
-                 ]
-            },
-            future: {
-                name: '未來捷運', color: '#9c27b0', stations: [] // 將從KML動態加載
-            }
-        };
-        
-        // 路線名稱對照表
-        const lineNames = {
-            'tamsui-xinyi': '淡水信義線', 'bannan': '板南線', 'wenhu': '文湖線',
-            'songshan-xindian': '松山新店線', 'songshan-xindian-branch': '小碧潭支線',
-            'zhonghe-xinlu': '中和新蘆線', 'circular': '環狀線', 'red': '紅線',
-            'orange': '橘線', 'airport': '機場線', 'sanying': '三鶯線'
-        };
+function clearSelectedDistricts() {
+    selectedDistricts = [];
+    renderDistrictTags();
+    dom.districtSuggestions.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+}
 
-        function getLineName(lineKey) { return lineNames[lineKey] || '未知路線'; }
+function renderDistrictTags() {
+    dom.districtContainer.querySelectorAll('.multi-tag').forEach(tag => tag.remove());
+    dom.districtContainer.insertBefore(dom.districtInputArea, dom.districtContainer.firstChild);
 
-        // --- 地圖與捷運繪製函式 ---
-
-        /**
-         * 初始化地圖
-         */
-        function initMap() {
-            map = L.map('map', { zoomControl: false }).setView([25.0330, 121.5654], 16); // 預設視角在台北101
-
-            // 初始化使用 Google Maps 圖層與預設樣式
-            baseLayer = L.gridLayer.googleMutant({
-                type: 'roadmap',
-                styles: defaultMapStyle
-            }).addTo(map);
-
-            L.control.zoom({ position: 'bottomright' }).addTo(map); // 縮放控制項置於右下角
-
-            // 初始化其他圖層
-            buildingLayer = L.layerGroup().addTo(map);
-            metroLayer = L.layerGroup().addTo(map);
-
-            // 點擊地圖空白處時，隱藏建築資訊面板
-            map.on('click', function(e) {
-                hideBuildingInfo();
+    if (selectedDistricts.length > 0) {
+        dom.districtInputArea.classList.add('hidden');
+        selectedDistricts.forEach(name => {
+            const tagElement = document.createElement('span');
+            tagElement.className = 'multi-tag';
+            tagElement.textContent = name;
+            const removeBtn = document.createElement('span');
+            removeBtn.className = 'multi-tag-remove';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.dataset.name = name;
+            tagElement.appendChild(removeBtn);
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeDistrict(name);
             });
-        }
-        
-        /**
-         * 根據使用者在編輯器中輸入的 JSON 套用新的地圖樣式
-         */
-        function applyMapStyle() {
-            const editor = document.getElementById('mapStyleEditor');
-            let newStyle;
-            try {
-                // 嘗試解析 JSON
-                newStyle = JSON.parse(editor.value);
-            } catch (error) {
-                // 如果解析失敗，顯示錯誤訊息
-                setStatus(`JSON 格式錯誤: ${error.message}`, 'error');
-                return;
-            }
-
-            // 移除舊的底圖圖層
-            if (baseLayer) {
-                map.removeLayer(baseLayer);
-            }
-            
-            // 創建並加入新的 Google Maps 圖層
-            baseLayer = L.gridLayer.googleMutant({
-                type: 'roadmap', // 基本地圖類型
-                styles: newStyle // 套用新的樣式
-            });
-            map.addLayer(baseLayer);
-
-            // 確保捷運和建築圖層在最上層
-            baseLayer.bringToBack();
-            metroLayer.bringToFront();
-            buildingLayer.bringToFront();
-            
-            setStatus('地圖樣式已成功更新！', 'success');
-        }
-
-        /**
-         * 根據使用者勾選狀態，重新繪製所有可見的捷運路線
-         */
-        function redrawAllVisibleMetro() {
-            metroLayer.clearLayers();
-            const showFuture = document.getElementById('show-future-metro').checked;
-            
-            Object.keys(metroSystems).forEach(systemKey => {
-                const checkbox = document.getElementById(`show-${systemKey}-metro`);
-                // 如果勾選了該系統，或該系統是 'future' 系統，就繪製它
-                if ((checkbox && checkbox.checked) || (systemKey === 'future' && showFuture)) {
-                    const system = metroSystems[systemKey];
-                    loadMetroLines(system, showFuture);
-                    loadMetroStations(system, showFuture);
-                }
-            });
-        }
-
-        /**
-         * 載入並繪製捷運路線
-         * @param {object} system - 捷運系統資料
-         * @param {boolean} showFuture - 是否顯示未來路線
-         */
-        function loadMetroLines(system, showFuture) {
-            const lineGroups = {}; // 將同路線的站點分組
-            
-            system.stations.forEach(station => {
-                if (station.status === 'future' && !showFuture) return;
-                if (!lineGroups[station.line]) lineGroups[station.line] = [];
-                lineGroups[station.line].push(station);
-            });
-
-            Object.values(lineGroups).forEach(stations => {
-                const lineCoords = stations.map(s => [s.lat, s.lng]);
-                if (lineCoords.length < 2) return;
-
-                const isFuture = stations[0].status === 'future';
-                
-                // 繪製路線
-                const metroLine = L.polyline(lineCoords, {
-                    color: stations[0].lineColor,
-                    weight: isFuture ? 4 : 6,
-                    opacity: isFuture ? 0.7 : 0.8,
-                    className: `metro-line ${isFuture ? 'future' : ''}`
-                });
-
-                metroLayer.addLayer(metroLine);
-            });
-        }
-
-        /**
-         * 載入並繪製捷運站點
-         * @param {object} system - 捷運系統資料
-         * @param {boolean} showFuture - 是否顯示未來站點
-         */
-        function loadMetroStations(system, showFuture) {
-            system.stations.forEach(station => {
-                if (station.status === 'future' && !showFuture) return;
-                
-                const isFuture = station.status === 'future';
-                const isFutureSystem = system.name === '未來捷運'; // 判斷是否為KML載入的站點
-                const lineColor = isFutureSystem ? '#9c27b0' : (station.lineColor || system.color);
-                const stationName = isFutureSystem ? station.name.replace(/站$/, '') : station.name;
-
-                // 創建自訂的站點圖標
-                const stationIcon = L.divIcon({
-                    className: `metro-station ${isFuture ? 'future' : ''} ${isFutureSystem ? 'future-system' : ''}`,
-                    html: `<div class="metro-station-marker" style="background: ${lineColor};"></div>`,
-                    iconSize: isFuture ? [12, 12] : [16, 16],
-                    iconAnchor: isFuture ? [6, 6] : [8, 8]
-                });
-
-                const stationMarker = L.marker([station.lat, station.lng], {
-                    icon: stationIcon,
-                    zIndexOffset: isFuture ? 999 : 1000 // 讓營運中站點在最上層
-                });
-
-                // 創建彈出視窗內容
-                const popupContent = `
-                    <div style="font-family: 'Inter', sans-serif; padding: 12px; min-width: 180px;">
-                        <div style="font-weight: 700; font-size: 16px; color: ${lineColor}; margin-bottom: 4px;">
-                             ${stationName} ${isFuture ? '<span style="color:#9c27b0; font-weight:500;">(規劃中)</span>' : ''}
-                        </div>
-                        <div style="font-size: 13px; color: #64748b; margin-bottom: 6px;">
-                            ${isFutureSystem ? '未來捷運站' : system.name}
-                            ${station.line && !isFutureSystem ? ` - ${getLineName(station.line)}` : ''}
-                        </div>
-                        <div style="font-size: 11px; color: #9ca3af; margin-top: 8px; border-top: 1px solid #f1f5f9; padding-top: 6px;">
-                            ${station.lat.toFixed(6)}, ${station.lng.toFixed(6)}
-                        </div>
-                    </div>`;
-
-                // 綁定彈出視窗
-                stationMarker.bindPopup(popupContent, {
-                    offset: [0, -8],
-                    className: 'metro-popup'
-                }).on('mouseover', function() { this.openPopup(); });
-
-                metroLayer.addLayer(stationMarker);
-            });
-        }
-        
-        /**
-         * 全選/全不選所有營運中的捷運系統
-         */
-        function toggleAllMetro() {
-            const allCheckbox = document.getElementById('show-all-metro');
-            const systemKeys = ['taipei', 'kaohsiung', 'taoyuan', 'new_taipei'];
-            systemKeys.forEach(key => {
-                const checkbox = document.getElementById(`show-${key}-metro`);
-                if (checkbox) checkbox.checked = allCheckbox.checked;
-            });
-            redrawAllVisibleMetro();
-        }
-
-        // --- 地點與捷運相關功能函式 ---
-
-        /**
-         * 聚焦到台灣主要捷運路網的總覽範圍
-         */
-        function focusOnMetroArea() {
-            map.fitBounds(L.latLngBounds([[22.5, 120.2], [25.2, 121.7]]), { padding: [20, 20] });
-            setStatus('顯示台灣捷運路網總覽', 'info');
-        }
-
-        /**
-         * 尋找離使用者目前位置最近的營運中捷運站
-         */
-        function findNearestMetro() {
-            if (!navigator.geolocation) {
-                return setStatus('您的瀏覽器不支援定位功能', 'error');
-            }
-            showLoading('正在尋找最近的捷運站...');
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const userLat = position.coords.latitude;
-                    const userLng = position.coords.longitude;
-                    
-                    let nearestStation = null;
-                    let minDistance = Infinity;
-                    
-                    Object.values(metroSystems).forEach(system => {
-                        system.stations.forEach(station => {
-                            if (station.status !== 'operational') return; // 只搜尋營運中站點
-                            const dist = calculateDistance(userLat, userLng, station.lat, station.lng);
-                            if (dist < minDistance) {
-                                minDistance = dist;
-                                nearestStation = { ...station, system: system.name };
-                            }
-                        });
-                    });
-                    
-                    if (nearestStation) {
-                        map.setView([nearestStation.lat, nearestStation.lng], 16);
-                        // 標示使用者位置
-                        L.marker([userLat, userLng]).addTo(map);
-                        setStatus(`最近捷運站：${nearestStation.name} (距離約 ${minDistance.toFixed(0)} 公尺)`, 'success');
-                    } else {
-                        setStatus('找不到附近的捷運站', 'error');
-                    }
-                    hideLoading();
-                },
-                () => {
-                    setStatus('定位失敗，無法尋找最近捷運站', 'error');
-                    hideLoading();
-                }
-            );
-        }
-
-        /**
-         * 計算兩點間的直線距離 (Haversine 公式)
-         * @returns {number} 距離 (公尺)
-         */
-        function calculateDistance(lat1, lng1, lat2, lng2) {
-            const R = 6371000; // 地球半徑 (公尺)
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLng = (lng2 - lng1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                      Math.sin(dLng/2) * Math.sin(dLng/2);
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        }
-
-        // --- 建築物分析函式 ---
-
-        /**
-         * 根據樓層數獲取對應的顏色
-         * @param {object} building - 建築物資料
-         * @returns {string} 顏色碼
-         */
-        function getHeightColor(building) {
-            const levels = getFloorCount(building);
-            if (levels === 0) return '#64748b'; // 未知
-            if (levels <= 3) return '#10b981';  // 綠
-            if (levels <= 8) return '#f59e0b';  // 橙
-            if (levels <= 15) return '#ef4444'; // 紅
-            return '#8b5cf6'; // 紫
-        }
-
-        /**
-         * 從建築物資料中提取樓層數
-         */
-        function getFloorCount(building) {
-            if (userAddedHeights[building.id]) return userAddedHeights[building.id].levels || 0;
-            const tags = building.tags || {};
-            if (tags['building:levels']) return parseInt(tags['building:levels']);
-            if (tags.height) return Math.round(parseFloat(tags.height.replace(/[^\d.]/g, '')) / 3.5); // 估算
-            return 0;
-        }
-        
-        /**
-         * 從建築物資料中提取類型
-         */
-        function getBuildingType(building) {
-            const tags = building.tags || {};
-            const b_type = tags.building;
-            if (b_type === 'residential' || b_type === 'house' || b_type === 'apartments') return 'residential';
-            if (b_type === 'commercial' || b_type === 'retail' || tags.shop) return 'commercial';
-            if (b_type === 'industrial' || b_type === 'warehouse') return 'industrial';
-            if (tags.amenity || b_type === 'public' || b_type === 'school' || b_type === 'hospital') return 'public';
-            return 'other';
-        }
-
-        /**
-         * 從 Overpass API 載入當前地圖範圍內的建築物資料
-         */
-        async function loadBuildingsWithHeight() {
-            const bounds = map.getBounds();
-            const query = `[out:json][timeout:30];(way["building"](${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()});relation["building"](${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}););out geom;`;
-            showLoading('正在分析區域建築數據...');
-            try {
-                const response = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                currentBuildings = data.elements;
-                displayBuildingsWithHeight(currentBuildings);
-                updateStatistics(currentBuildings);
-                setStatus(`成功分析 ${currentBuildings.length} 棟建築物`, 'success');
-            } catch (error) {
-                setStatus(`資料載入失敗: ${error.message}`, 'error');
-            } finally {
-                hideLoading();
-            }
-        }
-        
-        /**
-         * 在地圖上顯示建築物多邊形
-         * @param {array} buildings - 建築物資料陣列
-         */
-        function displayBuildingsWithHeight(buildings) {
-            buildingLayer.clearLayers();
-            if (!buildings) return;
-
-            buildings.forEach((building, index) => {
-                building.id = building.id || `building_${index}`;
-                if (!building.geometry || building.geometry.length < 3) return;
-
-                const coords = building.geometry.map(p => [p.lat, p.lon]);
-                const color = getHeightColor(building);
-                const levels = getFloorCount(building);
-                
-                const polygon = L.polygon(coords, {
-                    color: color, fillColor: color, fillOpacity: 0.8, weight: 2
-                });
-                polygon.buildingData = building;
-
-                // 只有在高縮放層級且有樓層數時才顯示標籤
-                if (levels > 0 && map.getZoom() > 16) {
-                    const center = polygon.getBounds().getCenter();
-                    buildingLayer.addLayer(L.marker(center, {
-                        icon: L.divIcon({ className: 'height-label', html: `${levels}F` }),
-                        interactive: false
-                    }));
-                }
-                
-                polygon.on('click', e => { L.DomEvent.stopPropagation(e); showBuildingInfo(e.target.buildingData, e.target); });
-                polygon.on('mouseover', e => e.target.setStyle({ fillOpacity: 0.95, weight: 3, color: '#ffffff' }));
-                polygon.on('mouseout', e => {
-                    if (selectedBuilding !== e.target.buildingData) {
-                        e.target.setStyle({ fillOpacity: 0.8, weight: 2, color: getHeightColor(e.target.buildingData) });
-                    }
-                });
-                buildingLayer.addLayer(polygon);
-            });
-        }
-
-        /**
-         * 更新側邊欄的統計資料
-         */
-        function updateStatistics(buildings) {
-            const total = buildings.length;
-            let totalLevels = 0, withHeight = 0, maxLevels = 0, highRise = 0;
-
-            buildings.forEach(b => {
-                const levels = getFloorCount(b);
-                if (levels > 0) {
-                    totalLevels += levels;
-                    withHeight++;
-                    maxLevels = Math.max(maxLevels, levels);
-                    if (levels >= 10) highRise++;
-                }
-            });
-            const avgHeight = withHeight > 0 ? (totalLevels / withHeight) : 0;
-
-            animateNumber('totalBuildings', total);
-            animateNumber('avgHeight', Math.round(avgHeight));
-            animateNumber('maxFloors', maxLevels);
-            animateNumber('highRise', highRise);
-            document.getElementById('statsPanel').style.display = 'grid';
-        }
-
-        /**
-         * 數字跳動動畫效果
-         */
-        function animateNumber(id, target) {
-            const el = document.getElementById(id);
-            const start = parseInt(el.textContent) || 0;
-            if (start === target) return;
-            let startTime = null;
-            const step = (timestamp) => {
-                if (!startTime) startTime = timestamp;
-                const progress = Math.min((timestamp - startTime) / 1000, 1);
-                el.textContent = Math.floor(progress * (target - start) + start);
-                if (progress < 1) requestAnimationFrame(step);
-            };
-            requestAnimationFrame(step);
-        }
-
-        /**
-         * 顯示所選建築物的詳細資訊
-         */
-        function showBuildingInfo(building, polygon) {
-            hideBuildingInfo();
-            selectedBuilding = building;
-            const tags = building.tags || {};
-            const levels = getFloorCount(building);
-            
-            const detailsDiv = document.getElementById('buildingDetails');
-            let details = `<div class="info-item"><span class="info-label">樓層數</span><span class="info-value">${levels > 0 ? levels + ' 層' : '未知'}</span></div>`;
-            if (tags.height) details += `<div class="info-item"><span class="info-label">建築高度</span><span class="info-value">${tags.height}</span></div>`;
-            details += `<div class="info-item"><span class="info-label">建築類型</span><span class="info-value">${getBuildingTypeDescription(building)}</span></div>`;
-            if (tags.name) details += `<div class="info-item"><span class="info-label">建築名稱</span><span class="info-value">${tags.name}</span></div>`;
-            
-            detailsDiv.innerHTML = details;
-            document.getElementById('buildingInfo').style.display = 'block';
-
-            if (polygon) {
-                 polygon.setStyle({ color: '#ffd700', weight: 4, fillOpacity: 0.95 }).bringToFront();
-            }
-        }
-
-        /**
-         * 提示使用者手動輸入建築樓層數
-         */
-        function addHeightInfo() {
-            if (!selectedBuilding) return;
-            const currentLevels = getFloorCount(selectedBuilding);
-            const levelsInput = prompt(`請輸入建築物樓層數 (目前: ${currentLevels > 0 ? currentLevels + '層' : '未知'}):`, currentLevels || '');
-            
-            if (levelsInput && !isNaN(levelsInput) && parseInt(levelsInput) > 0) {
-                userAddedHeights[selectedBuilding.id] = { levels: parseInt(levelsInput) };
-                filterByHeight(); // 重新整理顯示
-                updateStatistics(currentBuildings);
-                setStatus('建築資訊已更新！', 'success');
-            } else if (levelsInput !== null) {
-                setStatus('請輸入有效的數字', 'warning');
-            }
-        }
-
-        /**
-         * 根據篩選條件過濾並顯示建築物
-         */
-        function filterByHeight() {
-            const min = parseInt(document.getElementById('minHeight').value) || 0;
-            const max = parseInt(document.getElementById('maxHeight').value) || 999;
-            const types = {
-                residential: document.getElementById('filter-residential').checked,
-                commercial: document.getElementById('filter-commercial').checked,
-                industrial: document.getElementById('filter-industrial').checked,
-                public: document.getElementById('filter-public').checked
-            };
-            const filtered = currentBuildings.filter(b => {
-                const levels = getFloorCount(b);
-                const type = getBuildingType(b);
-                return levels >= min && levels <= max && (types[type] || (type === 'other' && Object.values(types).some(v => v)));
-            });
-            displayBuildingsWithHeight(filtered);
-            setStatus(`篩選完成：找到 ${filtered.length} 棟符合條件的建築`, 'info');
-        }
-
-        /**
-         * 清除所有篩選條件
-         */
-        function clearFilters() {
-            document.getElementById('minHeight').value = '';
-            document.getElementById('maxHeight').value = '';
-            ['filter-residential', 'filter-commercial', 'filter-industrial', 'filter-public'].forEach(id => document.getElementById(id).checked = true);
-            displayBuildingsWithHeight(currentBuildings);
-            setStatus('篩選條件已重置', 'info');
-        }
-
-        /**
-         * 獲取建築物類型的中文描述
-         */
-        function getBuildingTypeDescription(building) {
-            const tags = building.tags || {};
-            if (tags.building === 'residential' || tags.building === 'house') return '住宅建築';
-            if (tags.building === 'apartments') return '公寓大樓';
-            if (tags.building === 'commercial') return '商業建築';
-            if (tags.building === 'retail') return '零售店面';
-            if (tags.building === 'office') return '辦公大樓';
-            if (tags.building === 'industrial') return '工業建築';
-            if (tags.building === 'school') return '教育設施';
-            if (tags.building === 'hospital') return '醫療設施';
-            if (tags.amenity) return `公共設施 (${tags.amenity})`;
-            if (tags.shop) return `商店 (${tags.shop})`;
-            return tags.building || '一般建築';
-        }
-
-        /**
-         * 隱藏建築資訊面板並取消選取
-         */
-        function hideBuildingInfo() {
-            if (selectedBuilding) {
-                buildingLayer.eachLayer(layer => {
-                    if (layer instanceof L.Polygon && layer.buildingData && layer.buildingData.id === selectedBuilding.id) {
-                         layer.setStyle({ color: getHeightColor(layer.buildingData), weight: 2, fillOpacity: 0.8 });
-                    }
-                });
-            }
-            document.getElementById('buildingInfo').style.display = 'none';
-            selectedBuilding = null;
-        }
-
-        // --- 地點搜尋與定位函式 ---
-
-        /**
-         * 使用 Nominatim API 搜尋地點
-         */
-        async function searchLocation() {
-            const query = document.getElementById('searchInput').value.trim();
-            if (!query) return setStatus('請輸入搜尋地點', 'error');
-            showLoading('正在搜尋位置...');
-            try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=tw`);
-                const data = await response.json();
-                if (data.length > 0) {
-                    const { lat, lon, display_name } = data[0];
-                    map.setView([lat, lon], 17);
-                    L.marker([lat, lon]).addTo(map).bindPopup(display_name).openPopup();
-                    setStatus('位置搜尋成功！', 'success');
-                } else {
-                    setStatus('找不到該位置', 'error');
-                }
-            } catch (error) {
-                setStatus('搜尋失敗，請檢查網路連線', 'error');
-            } finally {
-                hideLoading();
-            }
-        }
-
-        /**
-         * 獲取使用者目前位置
-         */
-        function getCurrentLocation() {
-            if (!navigator.geolocation) return setStatus('您的瀏覽器不支援定位功能', 'error');
-            showLoading('正在取得您的位置...');
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const { latitude, longitude } = position.coords;
-                    map.setView([latitude, longitude], 17);
-                    L.marker([latitude, longitude]).addTo(map).bindPopup('您的目前位置').openPopup();
-                    setStatus('定位成功！', 'success');
-                    hideLoading();
-                },
-                (error) => {
-                    setStatus(`定位失敗：${error.message}`, 'error');
-                    hideLoading();
-                }
-            );
-        }
-
-        // --- UI 控制函式 ---
-        function showLoading(text = '處理中...') {
-            document.getElementById('loadingText').textContent = text;
-            document.getElementById('loadingOverlay').style.display = 'flex';
-        }
-        function hideLoading() {
-            document.getElementById('loadingOverlay').style.display = 'none';
-        }
-        function setStatus(message, type) {
-            const statusDiv = document.getElementById('status');
-            statusDiv.innerHTML = message;
-            statusDiv.className = `status ${type}`;
-            statusDiv.style.display = 'block';
-            setTimeout(() => { statusDiv.style.display = 'none'; }, 4000);
-        }
-
-        // --- KML 檔案處理 ---
-
-        /**
-         * 解析 KML 文字內容，提取站點資訊
-         * @param {string} kmlText - KML 檔案的文字內容
-         * @returns {array} 站點物件陣列
-         */
-        function parseKMLStations(kmlText) {
-            try {
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(kmlText, "text/xml");
-                if (xmlDoc.getElementsByTagName("parsererror").length) {
-                     throw new Error("KML 格式錯誤");
-                }
-                const placemarks = xmlDoc.getElementsByTagName("Placemark");
-                const stations = [];
-                for (let pm of placemarks) {
-                    const nameEl = pm.getElementsByTagName("name")[0];
-                    const pointEl = pm.getElementsByTagName("Point")[0];
-                    if (nameEl && pointEl) {
-                        const name = nameEl.textContent.trim();
-                        if (name.includes('機廠')) continue; // 忽略機廠
-                        const coordsText = pointEl.getElementsByTagName("coordinates")[0].textContent.trim();
-                        const [lng, lat] = coordsText.split(',').map(Number);
-                        if (lat < 20 || lat > 26 || lng < 120 || lng > 122) continue; // 檢查座標有效性
-                        stations.push({ name, lat, lng, line: 'future', lineColor: '#9c27b0', status: 'future' });
-                    }
-                }
-                return stations;
-            } catch (error) {
-                console.error('解析KML失敗:', error);
-                setStatus(`KML 解析失敗: ${error.message}`, 'error');
-                return [];
-            }
-        }
-        
-        /**
-         * 過濾重複的站點
-         */
-        function filterUniqueStations(stations) {
-            const unique = [];
-            const seen = new Set();
-            for (const station of stations) {
-                const key = `${station.lat.toFixed(6)},${station.lng.toFixed(6)}`;
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    unique.push(station);
-                }
-            }
-            return unique;
-        }
-
-        // --- 事件監聽器設定 ---
-        document.getElementById('kml-upload').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            const statusEl = document.getElementById('kml-status');
-            statusEl.textContent = '處理中...';
-            statusEl.style.color = '#f59e0b';
-            
-            reader.onload = (e) => {
-                const futureStations = parseKMLStations(e.target.result);
-                if (futureStations.length > 0) {
-                    const uniqueStations = filterUniqueStations(futureStations);
-                    metroSystems.future.stations = uniqueStations;
-                    document.getElementById('show-future-metro').checked = true;
-                    redrawAllVisibleMetro();
-                    statusEl.textContent = `成功載入 ${uniqueStations.length} 個站點`;
-                    statusEl.style.color = '#10b981';
-                    setStatus(`已成功載入 ${uniqueStations.length} 個未來捷運站點`, 'success');
-                } else {
-                    statusEl.textContent = '未找到有效站點';
-                    statusEl.style.color = '#ef4444';
-                }
-            };
-            reader.onerror = () => {
-                statusEl.textContent = '讀取檔案錯誤';
-                statusEl.style.color = '#ef4444';
-            };
-            reader.readAsText(file);
+            dom.districtContainer.insertBefore(tagElement, dom.districtInputArea);
         });
+    } else {
+        dom.districtInputArea.classList.remove('hidden');
+    }
+    dom.clearDistrictsBtn.classList.toggle('hidden', selectedDistricts.length === 0);
+}
 
-        document.getElementById('searchInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchLocation(); });
-        document.getElementById('minHeight').addEventListener('keypress', (e) => { if (e.key === 'Enter') filterByHeight(); });
-        document.getElementById('maxHeight').addEventListener('keypress', (e) => { if (e.key === 'Enter') filterByHeight(); });
+function onDistrictContainerClick(e) {
+    if (dom.districtContainer.classList.contains('disabled')) return;
+    if (!e.target.classList.contains('multi-tag-remove')) {
+        const isHidden = dom.districtSuggestions.classList.toggle('hidden');
+        dom.filterCard.classList.toggle('z-elevate-filters', !isHidden);
+    }
+}
+
+function onDistrictSuggestionClick(e) {
+    const target = e.target.closest('.suggestion-item');
+    if (!target) return;
+    
+    const name = target.dataset.name;
+    const checkbox = target.querySelector('input[type="checkbox"]');
+    if (!name || !checkbox) return;
+    
+    const allDistrictNames = districtData[dom.countySelect.value] || [];
+    const selectAllCheckbox = document.getElementById('district-select-all');
+
+    setTimeout(() => {
+        const isChecked = checkbox.checked;
+        if (name === 'all') {
+            selectedDistricts = isChecked ? [...allDistrictNames] : [];
+            dom.districtSuggestions.querySelectorAll('label:not([data-name="all"]) input[type="checkbox"]').forEach(cb => {
+                cb.checked = isChecked;
+            });
+        } else {
+            if (isChecked) {
+                if (!selectedDistricts.includes(name)) selectedDistricts.push(name);
+            } else {
+                selectedDistricts = selectedDistricts.filter(d => d !== name);
+            }
+        }
+
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = allDistrictNames.length > 0 && selectedDistricts.length === allDistrictNames.length;
+        }
         
-        // --- 應用程式初始化 ---
-        window.onload = () => {
-            initMap();
-            redrawAllVisibleMetro();
-            // 將預設樣式填入編輯器
-            document.getElementById('mapStyleEditor').value = JSON.stringify(defaultMapStyle, null, 2);
-            setStatus('Elite Property Analytics 已就緒！', 'success');
-            document.getElementById('statsPanel').style.display = 'none'; // 預設隱藏統計面板
+        renderDistrictTags();
+    }, 0);
+}
+
+function removeDistrict(name) {
+    selectedDistricts = selectedDistricts.filter(d => d !== name);
+    renderDistrictTags();
+    const checkbox = dom.districtSuggestions.querySelector(`label[data-name="${name}"] input`);
+    if (checkbox) checkbox.checked = false;
+    
+    const selectAllCheckbox = document.getElementById('district-select-all');
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+}
+
+// --- 建案名稱相關函式 ---
+
+function onProjectInput() {
+    clearTimeout(suggestionDebounceTimer);
+    suggestionDebounceTimer = setTimeout(() => {
+        fetchProjectNameSuggestions(dom.projectNameInput.value)
+    }, 300);
+}
+
+async function fetchProjectNameSuggestions(query) {
+    const county = dom.countySelect.value;
+    const countyCode = countyCodeMap[county];
+    if (!query.trim() || !countyCode) {
+        dom.projectNameSuggestions.classList.add('hidden');
+        dom.filterCard.classList.remove('z-elevate-filters');
+        return;
+    }
+    try {
+        dom.filterCard.classList.add('z-elevate-filters');
+        const payload = {
+            countyCode,
+            query,
+            districts: selectedDistricts
         };
-    </script>
+        const response = await fetch(PROJECT_NAMES_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4Ym1iYmZyemJ0dXVleXNpY29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODg5ODksImV4cCI6MjA2NjI2NDk4OX0.1IUynv5eK1xF_3pb-oasqaTrPvbeAOC4Sc1oykPBy4M' },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(`伺服器錯誤: ${response.status}`);
+        const names = await response.json();
+        renderSuggestions(names);
+    } catch (error) {
+        console.error("獲取建案建議失敗:", error);
+        dom.projectNameSuggestions.innerHTML = `<div class="p-2 text-red-400">讀取建議失敗。</div>`;
+        dom.projectNameSuggestions.classList.remove('hidden');
+    }
+}
+
+function renderSuggestions(names) {
+    if (names.length === 0) {
+        dom.projectNameSuggestions.innerHTML = '<div class="p-2 text-gray-500">無相符建案</div>';
+    } else {
+        dom.projectNameSuggestions.innerHTML = names.map(name => {
+            const isChecked = selectedProjects.includes(name);
+            return `<label class="suggestion-item" data-name="${name}"><input type="checkbox" ${isChecked ? 'checked' : ''}><span class="flex-grow">${name}</span></label>`
+        }).join('');
+    }
+    dom.projectNameSuggestions.classList.remove('hidden');
+}
+
+function onSuggestionClick(e) {
+    const target = e.target.closest('.suggestion-item');
+    if (!target) return;
+    const name = target.dataset.name;
+    const checkbox = target.querySelector('input[type="checkbox"]');
+    if (!name || !checkbox) return;
+    setTimeout(() => {
+        if (checkbox.checked) {
+            if (!selectedProjects.includes(name)) {
+                selectedProjects.push(name);
+            }
+        } else {
+            selectedProjects = selectedProjects.filter(p => p !== name);
+        }
+        renderProjectTags();
+    }, 0);
+}
+
+function removeProject(name) {
+    selectedProjects = selectedProjects.filter(p => p !== name);
+    renderProjectTags();
+    const openSuggestionCheckbox = dom.projectNameSuggestions.querySelector(`label[data-name="${name}"] input`);
+    if (openSuggestionCheckbox) openSuggestionCheckbox.checked = false;
+}
+
+function renderProjectTags() {
+    dom.projectNameContainer.querySelectorAll('.multi-tag').forEach(tag => tag.remove());
+    dom.projectNameContainer.insertBefore(dom.projectNameInput, dom.projectNameContainer.firstChild);
+    selectedProjects.forEach(name => {
+        const tagElement = document.createElement('span');
+        tagElement.className = 'multi-tag';
+        tagElement.textContent = name;
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'multi-tag-remove';
+        removeBtn.innerHTML = '&times;';
+        removeBtn.dataset.name = name;
+        tagElement.appendChild(removeBtn);
+        dom.projectNameContainer.insertBefore(tagElement, dom.projectNameInput);
+    });
+    dom.clearProjectsBtn.classList.toggle('hidden', selectedProjects.length === 0);
+}
+
+function clearSelectedProjects() {
+    selectedProjects = [];
+    renderProjectTags();
+    const suggestionCheckboxes = dom.projectNameSuggestions.querySelectorAll('input[type="checkbox"]');
+    suggestionCheckboxes.forEach(cb => cb.checked = false);
+}
+
+initialize();
+</script>
 </body>
 </html>
