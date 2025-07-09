@@ -15,33 +15,19 @@
                         'dark-bg': '#1a1d29',
                         'dark-card': '#252836',
                         'cyan-accent': '#06b6d4',
-                        'purple-accent': '#8b5cf6',
                     }
                 }
             }
         }
     </script>
     <style>
-        /* 複製您主頁面的字體設定 */
-        body {
-            font-family: 'Inter', 'Noto Sans TC', sans-serif;
-        }
-        /* 仿製您的 form-input 樣式 */
-        .form-input {
-            background-color: #1f2937;
-            border: 1px solid #4b5563;
-            color: #d1d5db;
-        }
-        .form-input:focus {
-            border-color: #06b6d4;
-            box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.5);
-            outline: none;
-        }
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+        .form-input { background-color: #1f2937; border: 1px solid #4b5563; color: #d1d5db; }
+        .form-input:focus { border-color: #06b6d4; box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.5); outline: none; }
     </style>
     <script type="module">
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-        // 請確認這些是您的 Supabase 專案 URL 和 ANON KEY
         const SUPABASE_URL = 'https://zxbmbbfrzbtuueysicoc.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4Ym1iYmZyemJ0dXVleXNpY29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2ODg5ODksImV4cCI6MjA2NjI2NDk4OX0.1IUynv5eK1xF_3pb-oasqaTrPvbeAOC4Sc1oykPBy4M';
         const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -50,45 +36,32 @@
             const loginForm = document.getElementById('login-form');
             const messageDiv = document.getElementById('message');
             const submitButton = document.getElementById('submit-button');
-            const buttonText = submitButton.querySelector('span');
-            const buttonLoader = submitButton.querySelector('div');
 
             loginForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                
-                // 禁用按鈕並顯示載入動畫
                 submitButton.disabled = true;
-                buttonText.classList.add('hidden');
-                buttonLoader.classList.remove('hidden');
-                messageDiv.textContent = '';
-
-
+                messageDiv.textContent = '登入中...';
+                
                 const email = e.target.email.value;
                 const password = e.target.password.value;
 
                 try {
+                    // 使用帳號密碼登入
                     const { data, error } = await supabase.auth.signInWithPassword({
                         email: email,
                         password: password,
                     });
 
-                    if (error) {
-                        throw error;
-                    }
+                    if (error) throw error;
                     
                     // 登入成功，跳轉到主查詢頁面
-                    // 假設主頁面檔案名稱為 index.html
-                    window.location.href = './index.html';
+                    // 【GitHub Pages 關鍵】使用相對路徑，假設 index.html 和 login.html 在同一目錄
+                    window.location.href = 'index.html';
 
                 } catch (error) {
                     console.error('登入失敗:', error);
                     messageDiv.textContent = `登入失敗: ${error.message}`;
-                    messageDiv.className = 'text-red-400 text-center mt-4';
-                    
-                    // 恢復按鈕狀態
                     submitButton.disabled = false;
-                    buttonText.classList.remove('hidden');
-                    buttonLoader.classList.add('hidden');
                 }
             });
         });
@@ -99,7 +72,7 @@
     <div class="bg-dark-card p-8 rounded-xl shadow-lg w-full max-w-sm">
         <header class="text-center mb-8">
             <h1 class="text-3xl font-extrabold text-white tracking-tight">不動產數據平台</h1>
-            <p class="mt-2 text-md text-gray-400">請登入以繼續</p>
+            <p class="mt-2 text-md text-gray-400">請使用您的帳號密碼登入</p>
         </header>
 
         <form id="login-form" class="space-y-6">
@@ -113,12 +86,11 @@
                 <input type="password" id="password" name="password" class="form-input block w-full pl-3 pr-10 py-3 text-base rounded-md" required autocomplete="current-password">
             </div>
 
-            <div id="message"></div>
+            <div id="message" class="text-red-400 text-center"></div>
 
             <div>
-                <button type="submit" id="submit-button" class="w-full flex justify-center items-center bg-cyan-accent hover:bg-opacity-90 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                    <div class="loader-sm hidden"></div>
-                    <span>登入</span>
+                <button type="submit" id="submit-button" class="w-full bg-cyan-accent hover:bg-opacity-90 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all disabled:opacity-50">
+                    登入
                 </button>
             </div>
         </form>
